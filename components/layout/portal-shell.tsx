@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu, Globe, LogOut, Sun, Smartphone } from "lucide-react";
@@ -159,14 +159,24 @@ function SidebarBody({
   );
 }
 
+/** Time-of-day greeting. Depends on the viewer's clock, which the server does
+ *  not have, so it renders neutrally on the server and refines after mount. */
+function greetingForNow(): string {
+  const h = new Date().getHours();
+  return h < 12 ? "Good Morning" : h < 18 ? "Good Afternoon" : "Good Evening";
+}
+
 function GreetingPill() {
   const { session } = useAuth();
-  const [greeting, setGreeting] = useState("Hello");
-
-  useEffect(() => {
-    const h = new Date().getHours();
-    setGreeting(h < 12 ? "Good Morning" : h < 18 ? "Good Afternoon" : "Good Evening");
-  }, []);
+  // useSyncExternalStore with a never-changing subscription: the server
+  // snapshot is the neutral "Hello", the client snapshot reads the clock. This
+  // is the hydration-safe way to render browser-only state — an effect that
+  // calls setState on mount does the same thing via an extra render pass.
+  const greeting = useSyncExternalStore(
+    () => () => {},
+    greetingForNow,
+    () => "Hello"
+  );
 
   const name = session?.user.name ?? session?.user.email ?? "there";
 

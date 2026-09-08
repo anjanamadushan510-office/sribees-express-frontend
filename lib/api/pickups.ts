@@ -1,42 +1,32 @@
-import { api, unwrapPaginated } from "@/lib/api/client";
-import type { ApiResponse, Paginated } from "@/types/api";
-import type {
-  CancelPickupPayload,
-  CreatePickupPayload,
-  PickupListParams,
-  PickupRow,
-} from "@/types/pickup";
+import { api, get, queryParams, range, toPage } from "@/lib/api/client";
+import type { Page } from "@/types/api";
+import type { CreatePickupPayload, PickupListParams, PickupRequest } from "@/types/pickup";
 
-/** GET /api/v1/client-pickup-request/list — paginated pickup requests for the client. */
+/** GET /client-portal/pickup-requests — scoped to the signed-in client. */
 export async function listClientPickups(
-  params: PickupListParams
-): Promise<Paginated<PickupRow>> {
-  const res = await api.get<ApiResponse<PickupRow[]>>(
-    "/v1/client-pickup-request/list",
-    { params: clean(params) }
-  );
-  return unwrapPaginated<PickupRow>(res);
+  params: PickupListParams = {}
+): Promise<Page<PickupRequest>> {
+  const paging = range(params);
+  const items = await get<PickupRequest[]>("/client-portal/pickup-requests", {
+    params: queryParams({ ...paging }),
+  });
+  return toPage(items, paging);
 }
 
-/** POST /api/v1/client-pickup-request/create. */
-export async function createPickupRequest(
+/** POST /client-portal/pickup-requests */
+export async function createClientPickup(
   payload: CreatePickupPayload
-): Promise<void> {
-  await api.post("/v1/client-pickup-request/create", payload);
+): Promise<PickupRequest> {
+  const { data } = await api.post<PickupRequest>(
+    "/client-portal/pickup-requests",
+    payload
+  );
+  return data;
 }
 
-/** PUT /api/v1/client-pickup-request/cancel. */
-export async function cancelPickupRequest(
-  payload: CancelPickupPayload
-): Promise<void> {
-  await api.put("/v1/client-pickup-request/cancel", payload);
-}
-
-function clean(params: PickupListParams): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(params)) {
-    if (v === undefined || v === null || v === "") continue;
-    out[k] = v;
-  }
-  return out;
-}
+/**
+ * Cancelling a pickup request has no endpoint on this backend. The Laravel API
+ * had `client-pickup-request/cancel`; nothing equivalent is exposed yet, so
+ * the UI must not offer a cancel action that would 404. Tracked in
+ * docs/API-GAPS.md.
+ */

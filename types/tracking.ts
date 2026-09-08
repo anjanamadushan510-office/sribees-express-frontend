@@ -1,25 +1,15 @@
-/** A single status entry in a tracked order's history. */
+/**
+ * Presentation shape for the shared <TrackingTimeline>.
+ *
+ * Deliberately not the API's `OrderHistoryEntry`: the timeline is also fed by
+ * the admin package view, and keeping one small view model between them means
+ * a change to the API's history payload touches the mappers, not the
+ * component.
+ */
 export interface TrackingStatusEntry {
   name: string;
-  remarks: string | null;
+  remarks?: string | null;
   added_date: string;
 }
 
-/**
- * Public tracking result (OrderAPIResource).
- * NOTE: the backend emits a key literally named "completed date" (with a space).
- */
-export interface TrackingResult {
-  waybill_id: string;
-  order_no: string | null;
-  customer_name: string;
-  customer_address: string;
-  customer_district: string;
-  customer_city: string;
-  customer_phone_no: string;
-  weight: number | string | null;
-  placed_date: string;
-  "completed date": string | null;
-  current_status: string;
-  status_history: TrackingStatusEntry[];
-}
+export type { ClientOrder as TrackedOrder, OrderHistoryEntry } from "@/types/order";

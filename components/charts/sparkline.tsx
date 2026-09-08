@@ -1,3 +1,5 @@
+import { useId } from "react";
+
 /**
  * Small decorative sparkline (matches the reference dashboard cards).
  * Purely ornamental — it conveys "trend" styling, not real per-card data.
@@ -9,7 +11,10 @@ export function Sparkline({
   color?: string;
   className?: string;
 }) {
-  const id = `spark-${Math.random().toString(36).slice(2, 8)}`;
+  // useId, not Math.random(): the gradient needs a unique id, and a random
+  // one differs between the server and client renders — which is a hydration
+  // mismatch, not just a lint complaint.
+  const id = `spark-${useId().replace(/:/g, "")}`;
   // A gentle fixed wave, normalised to a 100x32 viewbox.
   const path = "M0,24 C10,24 14,10 22,12 C30,14 34,26 44,22 C54,18 58,6 68,9 C78,12 82,22 92,16 L100,14";
   return (

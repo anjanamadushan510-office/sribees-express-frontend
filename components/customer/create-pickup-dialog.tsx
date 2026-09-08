@@ -6,7 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
 import { Loader2, Truck } from "lucide-react";
-import { useCreatePickup, usePickupVehicleTypes } from "@/lib/hooks/use-pickups";
+import { useCreatePickup } from "@/lib/hooks/use-pickups";
 import { getErrorMessage } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,48 +21,55 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 
+/**
+ * The fields here are exactly what `POST /client-portal/pickup-requests`
+ * accepts. The old form asked for a vehicle type and an order count; neither
+ * exists on this API, and collecting them would have meant showing the customer
+ * a promise the request does not carry.
+ */
 const schema = z.object({
-  vehicle_type_id: z.string().min(1, "Select a vehicle type"),
-  order_count: z.coerce
-    .number({ message: "Enter the number of orders" })
-    .int("Must be a whole number")
-    .min(1, "At least 1 order"),
-  note: z.union([z.string().trim().min(2, "Note is too short"), z.literal("")]).optional(),
+  pickup_address: z.string().trim().min(5, "Enter the full pickup address"),
+  contact_phone: z
+    .string()
+    .trim()
+    .min(9, "Enter a contact phone number")
+    .max(20, "That phone number looks too long"),
+  requested_date: z.string().min(1, "Pick a date"),
 });
 type FormValues = z.input<typeof schema>;
 
+/** Today in YYYY-MM-DD, local time — the earliest date worth offering. */
+function today(): string {
+  const now = new Date();
+  const offsetMs = now.getTimezoneOffset() * 60_000;
+  return new Date(now.getTime() - offsetMs).toISOString().slice(0, 10);
+}
+
 export function CreatePickupDialog() {
   const [open, setOpen] = useState(false);
-  const { data: vehicleTypes } = usePickupVehicleTypes();
   const mutation = useCreatePickup();
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { vehicle_type_id: "", order_count: undefined, note: "" },
+    defaultValues: { pickup_address: "", contact_phone: "", requested_date: today() },
   });
 
   const onSubmit = (values: FormValues) => {
     mutation.mutate(
       {
-        vehicle_type_id: Number(values.vehicle_type_id),
-        order_count: Number(values.order_count),
-        note: values.note || undefined,
+        pickup_address: values.pickup_address,
+        contact_phone: values.contact_phone,
+        requested_date: values.requested_date,
       },
       {
         onSuccess: () => {
           toast.success("Pickup request created");
-          form.reset();
+          form.reset({ pickup_address: "", contact_phone: "", requested_date: today() });
           setOpen(false);
         },
-        onError: (e) => toast.error(getErrorMessage(e, "Could not create pickup request")),
+        onError: (e) =>
+          toast.error(getErrorMessage(e, "Could not create pickup request")),
       }
     );
   };
@@ -78,71 +85,69 @@ export function CreatePickupDialog() {
       <DialogContent>
         <form onSubmit={form.handleSubmit(onSubmit)}>
           <DialogHeader>
-            <DialogTitle>Request a Pickup</DialogTitle>
+            <DialogTitle>Request a pickup</DialogTitle>
             <DialogDescription>
-              A rider will be assigned to collect your parcels.
+              Tell us where to collect from and when. We will assign a rider and
+              confirm.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-4">
+          <div className="grid gap-4 py-4">
             <div className="space-y-1.5">
-              <Label>Vehicle type</Label>
-              <Select
-                value={form.watch("vehicle_type_id")}
-                onValueChange={(v) =>
-                  form.setValue("vehicle_type_id", v, { shouldValidate: true })
-                }
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select a vehicle type" />
-                </SelectTrigger>
-                <SelectContent>
-                  {vehicleTypes?.map((v) => (
-                    <SelectItem key={v.key} value={v.key}>
-                      {v.value}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {form.formState.errors.vehicle_type_id && (
-                <p className="text-sm text-destructive">
-                  {form.formState.errors.vehicle_type_id.message}
-                </p>
-              )}
+              <Label htmlFor="pickup_address">Pickup address</Label>
+              <Textarea
+                id="pickup_address"
+                rows={3}
+                placeholder="Building, street, city"
+                {...form.register("pickup_address")}
+              />
+              <FieldError message={form.formState.errors.pickup_address?.message} />
             </div>
 
             <div className="space-y-1.5">
-              <Label>Number of orders</Label>
-              <Input type="number" min={1} {...form.register("order_count")} placeholder="e.g. 10" />
-              {form.formState.errors.order_count && (
-                <p className="text-sm text-destructive">
-                  {form.formState.errors.order_count.message}
-                </p>
-              )}
+              <Label htmlFor="contact_phone">Contact phone</Label>
+              <Input
+                id="contact_phone"
+                inputMode="tel"
+                placeholder="07XXXXXXXX"
+                {...form.register("contact_phone")}
+              />
+              <FieldError message={form.formState.errors.contact_phone?.message} />
             </div>
 
             <div className="space-y-1.5">
-              <Label>Note (optional)</Label>
-              <Textarea {...form.register("note")} rows={2} placeholder="Pickup instructions" />
-              {form.formState.errors.note && (
-                <p className="text-sm text-destructive">
-                  {form.formState.errors.note.message}
-                </p>
-              )}
+              <Label htmlFor="requested_date">Requested date</Label>
+              <Input
+                id="requested_date"
+                type="date"
+                min={today()}
+                {...form.register("requested_date")}
+              />
+              <FieldError message={form.formState.errors.requested_date?.message} />
             </div>
           </div>
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setOpen(false)}
+              disabled={mutation.isPending}
+            >
               Cancel
             </Button>
             <Button type="submit" disabled={mutation.isPending}>
               {mutation.isPending && <Loader2 className="size-4 animate-spin" />}
-              Submit Request
+              Create request
             </Button>
           </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
   );
+}
+
+function FieldError({ message }: { message?: string }) {
+  if (!message) return null;
+  return <p className="text-xs text-destructive">{message}</p>;
 }

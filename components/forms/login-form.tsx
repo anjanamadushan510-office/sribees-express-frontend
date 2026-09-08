@@ -40,9 +40,9 @@ export function LoginForm({
     try {
       const session = await login(guard, values);
       toast.success(`Welcome back${session.user.name ? `, ${session.user.name}` : ""}`);
-      if (session.passwordExpired) {
-        toast.warning("Your password has expired. Please update it from your profile.");
-      }
+      // The password-expiry warning is gone: this backend has no expiry claim,
+      // and a warning that can never fire is just dead code pretending to be a
+      // policy. See docs/API-GAPS.md.
       router.push(redirectTo);
     } catch (error) {
       toast.error(getErrorMessage(error, "Invalid email or password"));

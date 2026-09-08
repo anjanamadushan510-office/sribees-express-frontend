@@ -7,30 +7,41 @@ import {
   Warehouse,
   MapPin,
   Bike,
+  PackageCheck,
   Package,
 } from "lucide-react";
 import { useStatusStatistics } from "@/lib/hooks/use-dashboard";
-import type { StatusStat } from "@/types/dashboard";
+import type { StatusCount } from "@/types/dashboard";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Sparkline } from "@/components/charts/sparkline";
 
-/** Per-status icon + fallback colour, keyed by PrimaryStatusType key. */
+/**
+ * Icon + colour per status, keyed by the catalogue's `status_key`.
+ *
+ * These are presentation only. The API sends no colour, and the keys are the
+ * backend's semantic ones (`out_for_delivery`) rather than the old opaque
+ * `key_6`, so an unrecognised status degrades to a neutral parcel icon instead
+ * of disappearing.
+ */
 const STATUS_META: Record<string, { icon: LucideIcon; color: string }> = {
-  key_1: { icon: RefreshCw, color: "#3b82f6" }, // Processing — blue
-  key_4: { icon: Plane, color: "#a855f7" }, // Dispatched — purple
-  key_3: { icon: Warehouse, color: "#10b981" }, // Collected from Warehouse — green
-  key_5: { icon: MapPin, color: "#f59e0b" }, // Received at Destination — amber
-  key_6: { icon: Bike, color: "#15803d" }, // Out for Delivery — dark green
+  processing: { icon: RefreshCw, color: "#3b82f6" },
+  collected_from_warehouse: { icon: Warehouse, color: "#10b981" },
+  dispatched_to_destination: { icon: Plane, color: "#a855f7" },
+  received_at_destination: { icon: MapPin, color: "#f59e0b" },
+  out_for_delivery: { icon: Bike, color: "#15803d" },
+  delivered: { icon: PackageCheck, color: "#059669" },
 };
+
+const CARD_COUNT = 6;
 
 export function StatusStatCards() {
   const { data, isLoading, isError } = useStatusStatistics();
 
   if (isLoading) {
     return (
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-        {Array.from({ length: 5 }).map((_, i) => (
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        {Array.from({ length: CARD_COUNT }).map((_, i) => (
           <Skeleton key={i} className="h-28 w-full rounded-xl" />
         ))}
       </div>
@@ -48,18 +59,18 @@ export function StatusStatCards() {
   if (!data || data.length === 0) return null;
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
       {data.map((stat) => (
-        <StatCard key={stat.key} stat={stat} />
+        <StatCard key={stat.status_key} stat={stat} />
       ))}
     </div>
   );
 }
 
-function StatCard({ stat }: { stat: StatusStat }) {
-  const meta = STATUS_META[stat.key];
+function StatCard({ stat }: { stat: StatusCount }) {
+  const meta = STATUS_META[stat.status_key];
   const Icon = meta?.icon ?? Package;
-  const color = stat.color || meta?.color || "#6b7280";
+  const color = meta?.color ?? "#6b7280";
 
   return (
     <Card className="p-5">
@@ -73,10 +84,10 @@ function StatCard({ stat }: { stat: StatusStat }) {
         <Sparkline color={color} className="h-9 w-20" />
       </div>
       <p className="mt-3 text-3xl font-bold tabular-nums" style={{ color }}>
-        {stat.order_count ?? 0}
+        {stat.count}
       </p>
       <p className="mt-0.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        {stat.name}
+        {stat.status_name}
       </p>
     </Card>
   );

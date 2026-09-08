@@ -8,7 +8,7 @@ import {
   createClientOrder,
   getClientOrder,
   listClientOrders,
-  trackClientOrder,
+  getClientOrderHistory,
 } from "@/lib/api/orders";
 import { getClientCities, getClientStatusTypes } from "@/lib/api/dropdowns";
 import type { ClientOrdersListParams, CreateClientOrderPayload } from "@/types/order";
@@ -31,8 +31,8 @@ export function useClientOrder(id: number | string) {
 
 export function useClientOrderTracking(id: number | string) {
   return useQuery({
-    queryKey: ["client-order-tracking", String(id)],
-    queryFn: () => trackClientOrder(id),
+    queryKey: ["client-order-history", String(id)],
+    queryFn: () => getClientOrderHistory(id),
     enabled: !!id,
   });
 }

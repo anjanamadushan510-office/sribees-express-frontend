@@ -1,56 +1,52 @@
-import { STORAGE_KEYS } from "@/lib/config";
-import type { DecodedSecret, LoginResponse, Session } from "@/types/auth";
-
-/**
- * Decode a JWT payload WITHOUT verifying the signature.
- * The backend signs the `secret` server-side; the client only reads its claims
- * (guard, roles, permissions) for UI gating. Real authorization is enforced by the API.
- */
-export function decodeJwt<T = DecodedSecret>(jwt: string): T | null {
-  try {
-    const payload = jwt.split(".")[1];
-    if (!payload) return null;
-    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
-    const json = decodeURIComponent(
-      atob(normalized)
-        .split("")
-        .map((c) => "%" + c.charCodeAt(0).toString(16).padStart(2, "0"))
-        .join("")
-    );
-    return JSON.parse(json) as T;
-  } catch {
-    return null;
-  }
-}
-
-/** Build a normalised Session from a raw login response. */
-export function sessionFromLogin(res: LoginResponse): Session {
-  const decoded = decodeJwt(res.secret);
-  const permissionList = (res.permissions ?? decoded?.permissions ?? []).map(
-    (p) => p.authority
-  );
-
-  return {
-    token: res.token,
-    guard: decoded?.guard ?? "client",
-    user: res.user,
-    roles: decoded?.role ?? [],
-    permissions: permissionList,
-    passwordExpired: decoded?.passwordExpired ?? false,
-  };
-}
+import { COOKIE_KEYS, STORAGE_KEYS } from "@/lib/config";
+import type { AuthUser, GuardType, Session, TokenPair } from "@/types/auth";
 
 const isBrowser = typeof window !== "undefined";
 
-/** Persist the session to localStorage and mirror the token into a cookie for middleware. */
-export function persistSession(session: Session, secret: string): void {
+/** Build a normalised Session from a token pair plus the fetched user. */
+export function buildSession(
+  guard: GuardType,
+  tokens: TokenPair,
+  user: AuthUser
+): Session {
+  return {
+    accessToken: tokens.access_token,
+    refreshToken: tokens.refresh_token,
+    guard,
+    user,
+    // The API sends roles as objects; flatten to names for UI checks.
+    roles: (user.roles ?? []).map((role) => role.name),
+  };
+}
+
+/**
+ * Persist the session and mirror the access token into a cookie so the
+ * Next.js `proxy` can gate routes server-side (see proxy.ts).
+ *
+ * The cookie is intentionally readable by script: it is an access token the
+ * browser already holds in localStorage, so httpOnly would buy nothing while
+ * breaking the client-side redirect logic. The real protection is that the
+ * token is short-lived and every endpoint re-validates it.
+ */
+export function persistSession(session: Session): void {
   if (!isBrowser) return;
-  localStorage.setItem(STORAGE_KEYS.token, session.token);
-  localStorage.setItem(STORAGE_KEYS.secret, secret);
+  localStorage.setItem(STORAGE_KEYS.token, session.accessToken);
+  localStorage.setItem(STORAGE_KEYS.refreshToken, session.refreshToken);
   localStorage.setItem(STORAGE_KEYS.session, JSON.stringify(session));
-  // Cookie lets the Next.js middleware gate routes (httpOnly not required: token is a bearer access token).
-  document.cookie = `${STORAGE_KEYS.token}=${session.token}; path=/; SameSite=Lax; max-age=86400`;
-  document.cookie = `sx_guard=${session.guard}; path=/; SameSite=Lax; max-age=86400`;
+  document.cookie = `${COOKIE_KEYS.token}=${session.accessToken}; path=/; SameSite=Lax; max-age=86400`;
+  document.cookie = `${COOKIE_KEYS.guard}=${session.guard}; path=/; SameSite=Lax; max-age=86400`;
+}
+
+/** Replace just the tokens after a silent refresh, keeping the user/roles. */
+export function updateTokens(tokens: TokenPair): void {
+  if (!isBrowser) return;
+  const session = loadSession();
+  if (!session) return;
+  persistSession({
+    ...session,
+    accessToken: tokens.access_token,
+    refreshToken: tokens.refresh_token,
+  });
 }
 
 export function loadSession(): Session | null {
@@ -69,11 +65,36 @@ export function getToken(): string | null {
   return localStorage.getItem(STORAGE_KEYS.token);
 }
 
+export function getRefreshToken(): string | null {
+  if (!isBrowser) return null;
+  return localStorage.getItem(STORAGE_KEYS.refreshToken);
+}
+
+export function getGuard(): GuardType | null {
+  return loadSession()?.guard ?? null;
+}
+
 export function clearSession(): void {
   if (!isBrowser) return;
   localStorage.removeItem(STORAGE_KEYS.token);
-  localStorage.removeItem(STORAGE_KEYS.secret);
+  localStorage.removeItem(STORAGE_KEYS.refreshToken);
   localStorage.removeItem(STORAGE_KEYS.session);
-  document.cookie = `${STORAGE_KEYS.token}=; path=/; max-age=0`;
-  document.cookie = `sx_guard=; path=/; max-age=0`;
+  document.cookie = `${COOKIE_KEYS.token}=; path=/; max-age=0`;
+  document.cookie = `${COOKIE_KEYS.guard}=; path=/; max-age=0`;
+}
+
+/**
+ * Subscribe to session changes made in OTHER tabs.
+ *
+ * `storage` events fire only in tabs that did not perform the write, which is
+ * exactly what is wanted here: signing out in one tab signs the others out,
+ * while the acting tab updates through its own state.
+ */
+export function subscribeToStorage(onChange: () => void): () => void {
+  if (!isBrowser) return () => {};
+  const handler = (event: StorageEvent) => {
+    if (event.key === null || event.key === STORAGE_KEYS.session) onChange();
+  };
+  window.addEventListener("storage", handler);
+  return () => window.removeEventListener("storage", handler);
 }

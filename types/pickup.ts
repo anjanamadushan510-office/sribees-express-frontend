@@ -1,41 +1,25 @@
-/** A row from GET /api/v1/client-pickup-request/list. */
-export interface PickupRow {
+import type { ListRange } from "@/types/api";
+
+/** `PickupRequestOut` from the backend. */
+export interface PickupRequest {
   id: number;
-  pickup_id: string;
+  client_id: number;
+  branch_id: number | null;
+  assigned_rider_id: number | null;
+  pickup_address: string;
+  contact_phone: string;
   requested_date: string;
-  name: string | null;
-  pick_address: string | null;
-  pickup_branch: string | null;
-  order_count: number;
-  branch_orders_received: number | null;
-  note: string | null;
-  type_name: string | null;
-  rider: string | null;
-  status_changed_date: string | null;
-  status: string | null;
+  status: string;
+  created_at: string;
 }
 
-export interface PickupListParams {
-  page?: number;
-  perPage?: number;
-  orderBy?: string;
-  orderByDirection?: "asc" | "desc";
-  status?: string;
-  branch?: number;
-  pickup_id?: string;
-  name?: string;
-  pick_address?: string;
-}
-
-/** Payload for POST /api/v1/client-pickup-request/create. */
+/** Body for `POST /client-portal/pickup-requests` (ClientPickupRequestCreate). */
 export interface CreatePickupPayload {
-  vehicle_type_id: number;
-  order_count: number;
-  note?: string;
+  branch_id?: number | null;
+  pickup_address: string;
+  contact_phone: string;
+  /** ISO date, e.g. "2026-09-12". */
+  requested_date: string;
 }
 
-/** Payload for PUT /api/v1/client-pickup-request/cancel. */
-export interface CancelPickupPayload {
-  request_id: number;
-  reason: string;
-}
+export type PickupListParams = ListRange;

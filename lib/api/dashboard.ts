@@ -1,41 +1,44 @@
-import { api, pickKey, unwrap } from "@/lib/api/client";
-import type { ApiResponse } from "@/types/api";
-import type { ChartPayload, StatusStat } from "@/types/dashboard";
+import { get } from "@/lib/api/client";
+import type { DashboardSummary } from "@/types/dashboard";
 
-const pick = pickKey;
+/**
+ * Status keys the client dashboard surfaces as cards, in display order.
+ *
+ * The backend returns counts for every status it knows about; this list picks
+ * the ones worth a card and fixes their order, so the dashboard does not
+ * reshuffle itself when the catalogue grows.
+ */
+export const DASHBOARD_STATUS_KEYS = [
+  "processing",
+  "collected_from_warehouse",
+  "dispatched_to_destination",
+  "received_at_destination",
+  "out_for_delivery",
+  "delivered",
+] as const;
 
-/** Default dashboard cards — mirrors the reference SRIBEES Express client dashboard. */
-export const DEFAULT_DASHBOARD_STATUSES = [
-  "key_1", // Processing
-  "key_4", // Dispatched to Destination
-  "key_3", // Collected from Warehouse
-  "key_5", // Received at Destination
-  "key_6", // Out for Delivery
-];
+/** GET /client-portal/dashboard/summary */
+export async function getDashboardSummary(): Promise<DashboardSummary> {
+  return get<DashboardSummary>("/client-portal/dashboard/summary");
+}
 
-/** GET /api/v1/client-dashboard/status-statistic?statuses[]=... */
-export async function getStatusStatistics(
-  statuses: string[] = DEFAULT_DASHBOARD_STATUSES
-): Promise<StatusStat[]> {
-  const res = await api.get<ApiResponse<unknown>>(
-    "/v1/client-dashboard/status-statistic",
-    { params: { statuses } }
-  );
-  const statusData = pick<unknown[]>(unwrap(res), "status_data") ?? [];
-
-  // Each item is keyed by the status key: { key_8: { name, order_count, ... } }.
-  return statusData.flatMap((item) => {
-    if (!item || typeof item !== "object") return [];
-    return Object.entries(item as Record<string, Omit<StatusStat, "key">>).map(
-      ([key, v]) => ({ key, ...v })
-    );
+/**
+ * Counts for the cards above, in a stable order, with a zero for any status
+ * the backend did not report. Returning nothing for an absent status would
+ * make an empty card silently disappear rather than show "0".
+ */
+export function orderedStatusCounts(summary: DashboardSummary) {
+  const byKey = new Map(summary.by_status.map((s) => [s.status_key, s]));
+  return DASHBOARD_STATUS_KEYS.map((key) => {
+    const found = byKey.get(key);
+    return {
+      status_key: key,
+      status_name: found?.status_name ?? humanise(key),
+      count: found?.count ?? 0,
+    };
   });
 }
 
-/** GET /api/v1/client-dashboard/orders-chart → monthly order volume. */
-export async function getOrdersChart(): Promise<ChartPayload | null> {
-  const res = await api.get<ApiResponse<unknown>>(
-    "/v1/client-dashboard/orders-chart"
-  );
-  return pick<ChartPayload>(unwrap(res), "monthly_order_chart") ?? null;
+function humanise(key: string): string {
+  return key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }

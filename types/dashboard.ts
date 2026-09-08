@@ -1,21 +1,12 @@
-/** A single status statistic card (ClientDashboardStatusService::getFormatedStatusData). */
-export interface StatusStat {
-  key: string;
-  name: string;
-  color?: string | null;
-  icon?: string | null;
-  class?: string | null;
-  order_count: number;
+/** One row of `DashboardSummaryOut.by_status`. */
+export interface StatusCount {
+  status_key: string;
+  status_name: string;
+  count: number;
 }
 
-/** Chart.js-style payload returned by the dashboard chart endpoints. */
-export interface ChartPayload {
-  labels: string[];
-  datasets: {
-    label: string;
-    data: number[];
-    backgroundColor?: string;
-    borderColor?: string;
-    fill?: boolean;
-  }[];
+/** GET /client-portal/dashboard/summary */
+export interface DashboardSummary {
+  total_orders: number;
+  by_status: StatusCount[];
 }

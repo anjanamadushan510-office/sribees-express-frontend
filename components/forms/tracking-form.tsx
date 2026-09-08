@@ -5,7 +5,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation } from "@tanstack/react-query";
-import { Loader2, PackageSearch, MapPin, Phone, Weight } from "lucide-react";
+import { Loader2, PackageSearch, MapPin, CalendarDays } from "lucide-react";
 import { trackWaybill } from "@/lib/api/tracking";
 import { getErrorMessage } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
@@ -83,37 +83,36 @@ export function TrackingForm({ initialWaybill }: { initialWaybill?: string }) {
               <CardTitle className="text-lg">
                 Waybill {result.waybill_id}
               </CardTitle>
-              {result.order_no && (
-                <p className="text-sm text-muted-foreground">
-                  Order #{result.order_no}
-                </p>
-              )}
             </div>
             <StatusBadge status={result.current_status} />
           </CardHeader>
           <CardContent className="space-y-6">
+            {/*
+              Recipient name, phone and address used to be shown here. They are
+              gone because this page is public and a waybill number is printed
+              on the outside of the parcel — anyone holding one, or guessing
+              one, would have been reading a stranger's contact details. The
+              signed-in portal still shows the full order to its owner.
+            */}
             <dl className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
-              <Detail icon={<MapPin className="size-4" />} label="Recipient">
-                {result.customer_name}
-                <span className="block text-muted-foreground">
-                  {result.customer_address}, {result.customer_city},{" "}
-                  {result.customer_district}
-                </span>
+              <Detail icon={<MapPin className="size-4" />} label="Destination">
+                {result.destination_city ?? "—"}
               </Detail>
-              <Detail icon={<Phone className="size-4" />} label="Phone">
-                {result.customer_phone_no}
+              <Detail icon={<CalendarDays className="size-4" />} label="Placed">
+                {formatDate(result.created_at)}
               </Detail>
-              <Detail icon={<Weight className="size-4" />} label="Weight">
-                {result.weight ?? "—"}
-              </Detail>
-              <Detail label="Placed">{formatDate(result.placed_date)}</Detail>
             </dl>
 
             <Separator />
 
             <div>
               <h3 className="mb-4 text-sm font-semibold">Tracking history</h3>
-              <TrackingTimeline history={result.status_history} />
+              <TrackingTimeline
+                history={result.events
+                  .slice()
+                  .reverse()
+                  .map((e) => ({ name: e.status_name, added_date: e.occurred_at }))}
+              />
             </div>
           </CardContent>
         </Card>

@@ -8,10 +8,10 @@ import { z } from "zod";
 import { toast } from "sonner";
 import axios from "axios";
 import { Loader2 } from "lucide-react";
-import { useAuth } from "@/providers/auth-provider";
 import { useClientCities, useCreateClientOrder } from "@/lib/hooks/use-client-orders";
 import { getErrorMessage } from "@/lib/api/client";
 import type { CreateClientOrderPayload } from "@/types/order";
+import type { ValidationErrorItem } from "@/types/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,58 +23,45 @@ const phone = z
   .string()
   .regex(/^[0-9]{9,12}$/, "Enter a valid phone number (9–12 digits)");
 
-const WAYBILL_RE = /^([A-Z][0-9]{7}|[0-9]{8}|[A-Z]{2}[0-9]{6})$/;
-
-function buildSchema(isManual: boolean) {
-  return z.object({
-    waybill_id: isManual
-      ? z
-          .string()
-          .trim()
-          .regex(
-            WAYBILL_RE,
-            "Format: A1234567, 12345678, or AB123456"
-          )
-      : z.string().optional(),
-    order_no: z.string().trim().min(1, "Order number is required").max(20),
-    customer_name: z.string().trim().min(1, "Customer name is required").max(200),
-    address: z.string().trim().min(1, "Address is required").max(500),
-    phone_no: phone,
-    phone_no2: z.union([phone, z.literal("")]).optional(),
-    city_id: z.string().min(1, "Select a city"),
-    cod: z.coerce
-      .number({ message: "Enter the COD amount" })
-      .min(0, "COD cannot be negative")
-      .max(10_000_000, "COD is too large"),
-    description: z.string().trim().max(500).optional(),
-    note: z.string().trim().max(500).optional(),
-  });
-}
-
-type FormValues = z.input<ReturnType<typeof buildSchema>>;
+/**
+ * Only the fields `POST /client-portal/orders` actually accepts.
+ *
+ * Gone from the old form, and each for the same reason — the API has nowhere
+ * to put them, so collecting them would have shown the customer a promise the
+ * request does not carry: a manual waybill number (the backend allocates it),
+ * a client-side order reference, a second phone number, a parcel description,
+ * and a delivery note. See docs/API-GAPS.md.
+ */
+const schema = z.object({
+  recipient_name: z.string().trim().min(1, "Recipient name is required").max(200),
+  recipient_phone: phone,
+  recipient_address: z.string().trim().min(1, "Address is required").max(500),
+  city_id: z.string().min(1, "Select a city"),
+  weight_kg: z.coerce
+    .number({ message: "Enter the parcel weight" })
+    .positive("Weight must be greater than zero")
+    .max(1000, "That weight looks wrong"),
+  cod_amount: z.coerce
+    .number({ message: "Enter the COD amount" })
+    .min(0, "COD cannot be negative")
+    .max(10_000_000, "COD is too large"),
+});
+type FormValues = z.input<typeof schema>;
 
 export function CreateShipmentForm() {
   const router = useRouter();
-  const { session } = useAuth();
-  const isManual = session?.user.client?.way_bill_auto_generate === "Manual";
-
-  const schema = useMemo(() => buildSchema(isManual), [isManual]);
   const { data: cities, isLoading: citiesLoading } = useClientCities();
   const mutation = useCreateClientOrder();
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
-      waybill_id: "",
-      order_no: "",
-      customer_name: "",
-      address: "",
-      phone_no: "",
-      phone_no2: "",
+      recipient_name: "",
+      recipient_phone: "",
+      recipient_address: "",
       city_id: "",
-      cod: undefined,
-      description: "",
-      note: "",
+      weight_kg: undefined,
+      cod_amount: undefined,
     },
   });
 
@@ -84,18 +71,17 @@ export function CreateShipmentForm() {
   );
 
   const onSubmit = (values: FormValues) => {
+    // No client_id in the payload: the backend derives it from the token, so
+    // the browser cannot book an order against someone else's account.
     const payload: CreateClientOrderPayload = {
-      client_id: session?.user.client_id,
-      order_no: values.order_no!,
-      customer_name: values.customer_name!,
-      address: values.address!,
-      phone_no: values.phone_no!,
-      phone_no2: values.phone_no2 || undefined,
+      recipient_name: values.recipient_name!,
+      recipient_phone: values.recipient_phone!,
+      recipient_address: values.recipient_address!,
       city_id: Number(values.city_id),
-      cod: Number(values.cod),
-      description: values.description || undefined,
-      note: values.note || undefined,
-      ...(isManual ? { waybill_id: values.waybill_id } : {}),
+      // Sent as strings: these are NUMERIC columns server-side, and a float
+      // round-trip is exactly what you do not want on a money field.
+      weight_kg: String(values.weight_kg),
+      cod_amount: String(values.cod_amount),
     };
 
     mutation.mutate(payload, {
@@ -104,19 +90,20 @@ export function CreateShipmentForm() {
         router.push("/shipments");
       },
       onError: (error) => {
-        // Map Laravel 422 field errors onto the form where possible.
+        // FastAPI 422s come back as `detail: [{loc, msg}]`, where `loc` is
+        // ["body", "<field>"] — map those onto the form so the message lands on
+        // the input that caused it rather than in a toast the user has to
+        // translate back into a field.
         if (axios.isAxiosError(error) && error.response?.status === 422) {
-          const fieldErrors = (error.response.data?.error ?? {}) as Record<
-            string,
-            string[]
-          >;
+          const detail = error.response.data?.detail;
           let mapped = false;
-          for (const [field, messages] of Object.entries(fieldErrors)) {
-            if (field in (form.getValues() as object)) {
-              form.setError(field as keyof FormValues, {
-                message: messages[0],
-              });
-              mapped = true;
+          if (Array.isArray(detail)) {
+            for (const item of detail as ValidationErrorItem[]) {
+              const field = item.loc?.[item.loc.length - 1];
+              if (typeof field === "string" && field in (form.getValues() as object)) {
+                form.setError(field as keyof FormValues, { message: item.msg });
+                mapped = true;
+              }
             }
           }
           if (mapped) {
@@ -137,22 +124,22 @@ export function CreateShipmentForm() {
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
           <Field
-            label="Customer name"
-            error={form.formState.errors.customer_name?.message}
+            label="Recipient name"
+            error={form.formState.errors.recipient_name?.message}
             className="sm:col-span-2"
           >
-            <Input {...form.register("customer_name")} placeholder="Jane Perera" />
-          </Field>
-
-          <Field label="Phone number" error={form.formState.errors.phone_no?.message}>
-            <Input {...form.register("phone_no")} placeholder="0771234567" inputMode="numeric" />
+            <Input {...form.register("recipient_name")} placeholder="Jane Perera" />
           </Field>
 
           <Field
-            label="Alternate phone (optional)"
-            error={form.formState.errors.phone_no2?.message}
+            label="Phone number"
+            error={form.formState.errors.recipient_phone?.message}
           >
-            <Input {...form.register("phone_no2")} placeholder="0112345678" inputMode="numeric" />
+            <Input
+              {...form.register("recipient_phone")}
+              placeholder="0771234567"
+              inputMode="numeric"
+            />
           </Field>
 
           <Field label="City" error={form.formState.errors.city_id?.message}>
@@ -169,11 +156,11 @@ export function CreateShipmentForm() {
 
           <Field
             label="Delivery address"
-            error={form.formState.errors.address?.message}
+            error={form.formState.errors.recipient_address?.message}
             className="sm:col-span-2"
           >
             <Textarea
-              {...form.register("address")}
+              {...form.register("recipient_address")}
               placeholder="No. 12, Main Street, Apartment 4B"
               rows={2}
             />
@@ -183,45 +170,25 @@ export function CreateShipmentForm() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Parcel & payment</CardTitle>
+          <CardTitle className="text-base">Parcel &amp; payment</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
-          {isManual && (
-            <Field
-              label="Waybill number"
-              error={form.formState.errors.waybill_id?.message}
-            >
-              <Input {...form.register("waybill_id")} placeholder="A1234567" />
-            </Field>
-          )}
-
-          <Field label="Order number" error={form.formState.errors.order_no?.message}>
-            <Input {...form.register("order_no")} placeholder="Your reference #" />
-          </Field>
-
-          <Field label="COD amount" error={form.formState.errors.cod?.message}>
+          <Field label="Weight (kg)" error={form.formState.errors.weight_kg?.message}>
             <Input
               type="number"
               step="0.01"
-              {...form.register("cod")}
-              placeholder="0.00"
+              {...form.register("weight_kg")}
+              placeholder="1.00"
             />
           </Field>
 
-          <Field
-            label="Description (optional)"
-            error={form.formState.errors.description?.message}
-            className="sm:col-span-2"
-          >
-            <Input {...form.register("description")} placeholder="e.g. 1x T-shirt" />
-          </Field>
-
-          <Field
-            label="Note (optional)"
-            error={form.formState.errors.note?.message}
-            className="sm:col-span-2"
-          >
-            <Textarea {...form.register("note")} rows={2} placeholder="Delivery instructions" />
+          <Field label="COD amount" error={form.formState.errors.cod_amount?.message}>
+            <Input
+              type="number"
+              step="0.01"
+              {...form.register("cod_amount")}
+              placeholder="0.00"
+            />
           </Field>
         </CardContent>
       </Card>
@@ -258,7 +225,7 @@ function Field({
     <div className={className}>
       <Label className="mb-1.5 block">{label}</Label>
       {children}
-      {error && <p className="mt-1 text-sm text-destructive">{error}</p>}
+      {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
     </div>
   );
 }

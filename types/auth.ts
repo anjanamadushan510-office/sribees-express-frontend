@@ -1,69 +1,72 @@
-/** Backend auth guards exposed to the frontend. */
+/**
+ * Auth types for the FastAPI backend.
+ *
+ * Two separate principals, deliberately kept apart rather than merged behind a
+ * single "user": the backend issues staff and client tokens from different
+ * endpoints and validates them with different dependencies, so collapsing them
+ * here would hide a real authorization boundary.
+ */
+
+/** Which login the session came from. Maps to `/identity/auth/{guard}/…`. */
 export type GuardType = "staff" | "client";
 
-/** A permission as returned by the backend ({ authority: "view-orders" }). */
-export interface Permission {
-  authority: string;
+/** POST /identity/auth/{staff,client}/login and /refresh both return this. */
+export interface TokenPair {
+  access_token: string;
+  refresh_token: string;
+  token_type?: string;
+  /** Access-token lifetime in seconds. */
+  expires_in: number;
 }
 
-/**
- * The authenticated user object. It is a Laravel model serialised to JSON, so
- * it carries many fields. We type the ones the UI relies on and keep the rest open.
- */
-export interface AuthUser {
+/** A role as the backend serialises it — an object, not a bare string. */
+export interface Role {
   id: number;
-  name?: string;
-  first_name?: string;
-  last_name?: string;
+  name: string;
+  guard_name: string;
+}
+
+/** GET /identity/auth/client/me */
+export interface ClientUser {
+  id: number;
+  client_id: number;
+  name: string;
   email: string;
-  phone_number?: string;
-  client_id?: number;
-  is_webhook_active?: boolean;
-  /** Loaded for client-guard users at login (client.businessLayer). */
-  client?: {
-    id?: number;
-    way_bill_auto_generate?: "Manual" | "Auto" | string;
-    [key: string]: unknown;
-  };
-  [key: string]: unknown;
+  is_active: boolean;
+  roles: Role[];
+}
+
+/** GET /identity/auth/staff/me */
+export interface StaffUser {
+  id: number;
+  name: string;
+  email: string;
+  phone?: string | null;
+  is_active: boolean;
+  roles: Role[];
+}
+
+export type AuthUser = ClientUser | StaffUser;
+
+/** Narrowing helper — only client users carry a `client_id`. */
+export function isClientUser(user: AuthUser): user is ClientUser {
+  return (user as ClientUser).client_id !== undefined;
 }
 
 /**
- * Raw payload returned by POST /api/v1/login/{staff|client}.
- * NOTE: the login endpoints do NOT use the standard ApiResponse envelope.
+ * Normalised session persisted in the browser.
+ *
+ * `roles` is flattened to names for UI checks. There is no `permissions`:
+ * the backend exposes roles only, and inventing an empty permission list here
+ * would let UI code write `can("edit-order")` checks that silently always fail.
+ * Gate on roles, and treat the API's 403 as the real authority.
  */
-export interface LoginResponse {
-  user: AuthUser;
-  token: string;
-  secret: string;
-  permissions?: Permission[];
-}
-
-/** Error shape returned by the login endpoints on failure. */
-export interface LoginErrorBody {
-  error: unknown;
-  message: string;
-}
-
-/** Decoded contents of the `secret` JWT issued at login. */
-export interface DecodedSecret {
-  user: AuthUser;
-  guard: GuardType;
-  role: string[];
-  token?: string;
-  permissions?: Permission[];
-  passwordExpired?: boolean;
-  password_reset_key?: string | null;
-}
-
-/** Normalised session persisted on the client. */
 export interface Session {
-  token: string;
+  accessToken: string;
+  refreshToken: string;
   guard: GuardType;
   user: AuthUser;
   roles: string[];
-  permissions: string[];
-  passwordExpired: boolean;
 }
 
 export interface LoginCredentials {

@@ -3,17 +3,15 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Search, RotateCcw, Barcode, Webhook } from "lucide-react";
+import { RotateCcw, Barcode } from "lucide-react";
 import { useClientOrders, useClientStatusTypes } from "@/lib/hooks/use-client-orders";
-import type { ClientOrderRow, ClientOrdersListParams } from "@/types/order";
+import type { ClientOrder } from "@/types/order";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { PageHeader } from "@/components/shared/page-header";
 import { DataTable, type Column } from "@/components/shared/data-table";
-import { Pagination } from "@/components/shared/pagination";
+import { OffsetPagination } from "@/components/shared/offset-pagination";
 import { StatusBadge } from "@/components/shared/status-badge";
-import { WebhookSettingsDialog } from "@/components/customer/webhook-settings-dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Select,
@@ -24,45 +22,45 @@ import {
 } from "@/components/ui/select";
 
 const ALL = "__all__";
-const PER_PAGE = 10;
+const PER_PAGE = 20;
 
-const columns: Column<ClientOrderRow>[] = [
+const columns: Column<ClientOrder>[] = [
   {
     header: "Waybill",
-    cell: (r) => <span className="font-medium">{r.waybill_id}</span>,
+    cell: (r) => (
+      <span className="font-medium">{r.waybill_id ?? `#${r.id}`}</span>
+    ),
   },
-  { header: "Order No", cell: (r) => r.order_no ?? "—" },
   {
-    header: "Customer",
+    header: "Recipient",
     cell: (r) => (
       <div>
-        <div>{r.customer_name}</div>
-        <div className="text-xs text-muted-foreground">{r.phone_no ?? ""}</div>
+        <div>{r.recipient_name}</div>
+        <div className="text-xs text-muted-foreground">{r.recipient_phone}</div>
       </div>
     ),
   },
   {
-    header: "Destination",
+    header: "Address",
     cell: (r) => (
-      <div className="text-sm">
-        {r.city ?? "—"}
-        <span className="block text-xs text-muted-foreground">{r.district ?? ""}</span>
-      </div>
+      <span className="line-clamp-2 text-sm">{r.recipient_address}</span>
     ),
   },
   {
     header: "COD",
     className: "text-right",
-    cell: (r) => formatCurrency(r.cod),
+    cell: (r) => formatCurrency(r.cod_amount),
   },
   {
     header: "Status",
-    cell: (r) => <StatusBadge status={r.status} />,
+    cell: (r) => <StatusBadge status={r.current_status.name} />,
   },
   {
     header: "Date",
     cell: (r) => (
-      <span className="text-sm text-muted-foreground">{formatDate(r.order_date)}</span>
+      <span className="text-sm text-muted-foreground">
+        {formatDate(r.created_at)}
+      </span>
     ),
   },
   {
@@ -79,74 +77,50 @@ const columns: Column<ClientOrderRow>[] = [
 
 export default function ShipmentsPage() {
   const router = useRouter();
-  const [page, setPage] = useState(1);
-  const [draft, setDraft] = useState({ waybill_id: "", customer_name: "", status: ALL });
-  const [filters, setFilters] = useState<ClientOrdersListParams>({});
-  const [webhookOpen, setWebhookOpen] = useState(false);
+  const [offset, setOffset] = useState(0);
+  const [status, setStatus] = useState(ALL);
 
   const { data: statusTypes } = useClientStatusTypes();
   const { data, isFetching } = useClientOrders({
-    page,
-    perPage: PER_PAGE,
-    orderBy: "order_date",
-    orderByDirection: "desc",
-    ...filters,
+    limit: PER_PAGE,
+    offset,
+    status_key: status !== ALL ? status : undefined,
   });
 
-  const applyFilters = () => {
-    setPage(1);
-    setFilters({
-      waybill_id: draft.waybill_id.trim() || undefined,
-      customer_name: draft.customer_name.trim() || undefined,
-      statuses: draft.status !== ALL ? [draft.status] : undefined,
-    });
+  const changeStatus = (value: string) => {
+    setStatus(value);
+    // Any filter change invalidates the current offset — staying on it would
+    // land the user in the middle of a different result set.
+    setOffset(0);
   };
 
-  const resetFilters = () => {
-    setDraft({ waybill_id: "", customer_name: "", status: ALL });
-    setFilters({});
-    setPage(1);
+  const reset = () => {
+    setStatus(ALL);
+    setOffset(0);
   };
 
   return (
     <>
-      <div className="mb-1 flex flex-wrap items-start justify-between gap-3">
-        <PageHeader title="My Shipments" description="Your complete order history." />
-        <Button variant="outline" onClick={() => setWebhookOpen(true)}>
-          <Webhook className="size-4" />
-          Webhook settings
-        </Button>
-      </div>
-      <WebhookSettingsDialog open={webhookOpen} onOpenChange={setWebhookOpen} />
+      {/*
+        The "Webhook settings" button is gone: this backend manages webhook
+        endpoints under /ecommerce, which authenticates with an API key rather
+        than a portal login, so a signed-in client user cannot reach them at
+        all. See docs/API-GAPS.md.
+      */}
+      <PageHeader title="My Shipments" description="Your complete order history." />
 
+      {/*
+        The waybill and recipient-name search boxes that used to live here are
+        gone. This endpoint filters by status only; searching would have meant
+        pulling every order into the browser and filtering there, which is both
+        slow and wrong the moment the result set exceeds one page. Server-side
+        search needs a backend change — see docs/API-GAPS.md.
+      */}
       <Card className="mb-4">
         <CardContent className="flex flex-col gap-3 pt-6 sm:flex-row sm:flex-wrap sm:items-end">
-          <div className="flex-1 space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">Waybill</label>
-            <Input
-              placeholder="Waybill number"
-              value={draft.waybill_id}
-              onChange={(e) => setDraft((d) => ({ ...d, waybill_id: e.target.value }))}
-              onKeyDown={(e) => e.key === "Enter" && applyFilters()}
-            />
-          </div>
-          <div className="flex-1 space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">Customer</label>
-            <Input
-              placeholder="Customer name"
-              value={draft.customer_name}
-              onChange={(e) =>
-                setDraft((d) => ({ ...d, customer_name: e.target.value }))
-              }
-              onKeyDown={(e) => e.key === "Enter" && applyFilters()}
-            />
-          </div>
-          <div className="w-full space-y-1 sm:w-52">
+          <div className="w-full space-y-1 sm:w-64">
             <label className="text-xs font-medium text-muted-foreground">Status</label>
-            <Select
-              value={draft.status}
-              onValueChange={(v) => setDraft((d) => ({ ...d, status: v }))}
-            >
+            <Select value={status} onValueChange={changeStatus}>
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="All statuses" />
               </SelectTrigger>
@@ -161,11 +135,7 @@ export default function ShipmentsPage() {
             </Select>
           </div>
           <div className="flex gap-2">
-            <Button onClick={applyFilters}>
-              <Search className="size-4" />
-              Search
-            </Button>
-            <Button variant="outline" onClick={resetFilters}>
+            <Button variant="outline" onClick={reset} disabled={status === ALL}>
               <RotateCcw className="size-4" />
               Reset
             </Button>
@@ -179,13 +149,9 @@ export default function ShipmentsPage() {
         isLoading={isFetching && !data}
         rowKey={(r) => r.id}
         onRowClick={(r) => router.push(`/shipments/${r.id}`)}
-        emptyMessage="No shipments match your filters yet."
+        emptyMessage="No shipments match this filter yet."
       />
-      <Pagination
-        pagination={data?.pagination}
-        onPageChange={setPage}
-        isLoading={isFetching}
-      />
+      <OffsetPagination page={data} onOffsetChange={setOffset} isLoading={isFetching} />
     </>
   );
 }

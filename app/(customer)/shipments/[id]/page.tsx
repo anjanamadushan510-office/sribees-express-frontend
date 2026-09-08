@@ -21,19 +21,22 @@ export default function OrderDetailPage() {
   const id = params.id;
 
   const { data: order, isLoading } = useClientOrder(id);
-  const { data: tracking } = useClientOrderTracking(id);
+  const { data: history } = useClientOrderTracking(id);
 
-  // Backend returns tracking oldest-first; show newest-first with current on top.
-  const history: TrackingStatusEntry[] = (tracking ?? [])
+  // The API returns transitions oldest-first; the timeline reads newest-first
+  // with the current status on top.
+  const timeline: TrackingStatusEntry[] = (history ?? [])
     .slice()
     .reverse()
-    .map((t) => ({
-      name: t.status_name ?? "Unknown",
-      remarks: t.remarks,
-      added_date: t.status_created_at ?? "",
+    .map((entry) => ({
+      name: entry.to_status.name,
+      remarks: entry.reason,
+      added_date: entry.created_at,
     }));
 
-  const currentStatus = history[0]?.name ?? null;
+  // Prefer the order's own current_status over the newest history row: an order
+  // always has one, whereas the history can be empty on a freshly created order.
+  const currentStatus = order?.current_status.name ?? timeline[0]?.name ?? null;
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -51,11 +54,13 @@ export default function OrderDetailPage() {
           <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
             <div>
               <h1 className="text-2xl font-bold tracking-tight">
-                Waybill {order.waybill_id}
+                {order.waybill_id
+                  ? `Waybill ${order.waybill_id}`
+                  : `Order #${order.id}`}
               </h1>
-              {order.order_no && (
+              {order.waybill_id && (
                 <p className="text-sm text-muted-foreground">
-                  Order #{order.order_no}
+                  Order #{order.id}
                 </p>
               )}
             </div>
@@ -68,30 +73,55 @@ export default function OrderDetailPage() {
             </CardHeader>
             <CardContent>
               <dl className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
-                <Detail label="Customer">{order.customer_name}</Detail>
-                <Detail label="Phone">
-                  {order.phone_no_1 ?? order.phone_no ?? "—"}
-                </Detail>
+                <Detail label="Recipient">{order.recipient_name}</Detail>
+                <Detail label="Phone">{order.recipient_phone}</Detail>
                 <Detail label="Address" className="sm:col-span-2">
-                  {order.address ?? "—"}
+                  {order.recipient_address}
                 </Detail>
-                <Detail label="COD">{formatCurrency(order.cod)}</Detail>
+                <Detail label="COD">{formatCurrency(order.cod_amount)}</Detail>
+                <Detail label="COD collected">
+                  {formatCurrency(order.collected_cod_amount)}
+                </Detail>
                 <Detail label="Delivery charge">
-                  {formatCurrency(order.delivery_charge)}
+                  {/* Priced when the order is booked, so it is null until then. */}
+                  {order.delivery_charge
+                    ? formatCurrency(order.delivery_charge)
+                    : "Not priced yet"}
                 </Detail>
-                {order.description && (
-                  <Detail label="Description" className="sm:col-span-2">
-                    {order.description}
+                <Detail label="Weight">{order.weight_kg} kg</Detail>
+                {order.delivery_attempts > 0 && (
+                  <Detail label="Delivery attempts">
+                    {order.delivery_attempts}
                   </Detail>
                 )}
-                {order.note && (
-                  <Detail label="Note" className="sm:col-span-2">
-                    {order.note}
+                {order.handover_code_required && (
+                  <Detail label="Handover code">
+                    {order.handover_verified_at
+                      ? `Verified ${formatDate(order.handover_verified_at)}`
+                      : "Required at delivery"}
                   </Detail>
                 )}
-                {order.created_at && (
-                  <Detail label="Placed">{formatDate(order.created_at)}</Detail>
+                {order.pickup_address && (
+                  <Detail label="Pickup from" className="sm:col-span-2">
+                    {order.pickup_location_name
+                      ? `${order.pickup_location_name} — ${order.pickup_address}`
+                      : order.pickup_address}
+                  </Detail>
                 )}
+                {order.requested_delivery_date && (
+                  <Detail label="Requested delivery">
+                    {formatDate(order.requested_delivery_date)}
+                    {order.requested_delivery_window
+                      ? ` (${order.requested_delivery_window})`
+                      : ""}
+                  </Detail>
+                )}
+                {order.handling && order.handling.length > 0 && (
+                  <Detail label="Handling" className="sm:col-span-2">
+                    {order.handling.join(", ")}
+                  </Detail>
+                )}
+                <Detail label="Placed">{formatDate(order.created_at)}</Detail>
               </dl>
             </CardContent>
           </Card>
@@ -102,7 +132,13 @@ export default function OrderDetailPage() {
             </CardHeader>
             <CardContent>
               <Separator className="mb-6" />
-              <TrackingTimeline history={history} />
+              {timeline.length > 0 ? (
+                <TrackingTimeline history={timeline} />
+              ) : (
+                <p className="py-4 text-sm text-muted-foreground">
+                  No status changes recorded yet.
+                </p>
+              )}
             </CardContent>
           </Card>
         </>

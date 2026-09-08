@@ -1,57 +1,60 @@
-import { api, pickKey, unwrap, unwrapPaginated } from "@/lib/api/client";
-import type { ApiResponse, Paginated } from "@/types/api";
+import { get, queryParams, range, toPage } from "@/lib/api/client";
+import type { ListRange, Page } from "@/types/api";
 import type {
-  ClientOrderDetail,
-  ClientOrderRow,
+  ClientOrder,
   ClientOrdersListParams,
   CreateClientOrderPayload,
-  OrderTrackEntry,
+  OrderHistoryEntry,
 } from "@/types/order";
+import { api } from "@/lib/api/client";
 
-/** GET /api/v1/client-orders/list — paginated shipment history for the signed-in client. */
+/**
+ * GET /client-portal/orders — the signed-in client's shipments.
+ *
+ * Scoping is server-side: the endpoint derives the client from the token, so
+ * there is no client_id parameter to pass (and no way for the browser to ask
+ * for someone else's orders).
+ */
 export async function listClientOrders(
-  params: ClientOrdersListParams
-): Promise<Paginated<ClientOrderRow>> {
-  const res = await api.get<ApiResponse<ClientOrderRow[]>>(
-    "/v1/client-orders/list",
-    { params: serializeParams(params) }
-  );
-  return unwrapPaginated<ClientOrderRow>(res);
+  params: ClientOrdersListParams = {}
+): Promise<Page<ClientOrder>> {
+  const paging = range(params);
+  const items = await get<ClientOrder[]>("/client-portal/orders", {
+    params: queryParams({ status_key: params.status_key, ...paging }),
+  });
+  return toPage(items, paging);
 }
 
-/** GET /api/v1/client-orders/{order} — full order detail. */
-export async function getClientOrder(id: number | string): Promise<ClientOrderDetail> {
-  const res = await api.get<ApiResponse<unknown>>(`/v1/client-orders/${id}`);
-  const detail = pickKey<ClientOrderDetail>(unwrap(res), "order_details");
-  if (!detail) throw new Error("Order not found");
-  return detail;
+/** GET /client-portal/orders/{id} */
+export async function getClientOrder(id: number | string): Promise<ClientOrder> {
+  return get<ClientOrder>(`/client-portal/orders/${id}`);
 }
 
-/** GET /api/v1/client-orders/tracking/{order} — tracking history (oldest-first). */
-export async function trackClientOrder(
+/** GET /client-portal/orders/{id}/history — status transitions, oldest first. */
+export async function getClientOrderHistory(
   id: number | string
-): Promise<OrderTrackEntry[]> {
-  const res = await api.get<ApiResponse<unknown>>(`/v1/client-orders/tracking/${id}`);
-  return pickKey<OrderTrackEntry[]>(unwrap(res), "tracking_history") ?? [];
+): Promise<OrderHistoryEntry[]> {
+  return get<OrderHistoryEntry[]>(`/client-portal/orders/${id}/history`);
 }
 
-/** POST /api/v1/client-orders/create — create a single shipment. */
+/** POST /client-portal/orders — returns the created order, not just a status. */
 export async function createClientOrder(
   payload: CreateClientOrderPayload
-): Promise<void> {
-  await api.post("/v1/client-orders/create", payload);
+): Promise<ClientOrder> {
+  const { data } = await api.post<ClientOrder>("/client-portal/orders", payload);
+  return data;
 }
 
 /**
- * Axios serialises array params as `statuses[]=...`. The Laravel DTO expects
- * a real array, which `statuses[]` satisfies; we just drop empty values.
+ * GET /client-portal/api/orders/track/{waybill_id} — public-ish tracking by
+ * waybill. Unlike the endpoints above this is keyed by waybill rather than
+ * internal id, which is what a recipient actually has.
  */
-function serializeParams(params: ClientOrdersListParams): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(params)) {
-    if (value === undefined || value === null || value === "") continue;
-    if (Array.isArray(value) && value.length === 0) continue;
-    out[key] = value;
-  }
-  return out;
+export async function trackByWaybill(waybillId: string): Promise<ClientOrder> {
+  return get<ClientOrder>(
+    `/client-portal/api/orders/track/${encodeURIComponent(waybillId)}`
+  );
 }
+
+/** Re-exported so list screens can share one page size. */
+export type { ListRange };

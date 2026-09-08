@@ -1,133 +1,142 @@
-import { api, unwrap } from "@/lib/api/client";
-import type { ApiResponse } from "@/types/api";
+import { get } from "@/lib/api/client";
+import { unavailable } from "@/lib/api/unavailable";
+import type { OrderStatus } from "@/types/order";
 
 /**
- * Several backend dropdowns return an associative array that the API helper
- * converts into `[{ key, value }]` pairs.
+ * Select-input options. Kept as `{ key, value }` because every form in the app
+ * already binds to that shape — the backend now returns real resources, and
+ * these functions are the one place that flattening happens.
  */
 export interface KeyValueOption {
   key: string;
   value: string;
 }
 
-/** GET /api/v1/dropdown/client-primary-status-type (auth:client). */
-export async function getClientStatusTypes(): Promise<KeyValueOption[]> {
-  const res = await api.get<ApiResponse<KeyValueOption[]>>(
-    "/v1/dropdown/client-primary-status-type"
-  );
-  return unwrap<KeyValueOption[]>(res) ?? [];
+interface City {
+  id: number;
+  name: string;
+  district: string | null;
+  zone_id: number | null;
+  is_active: boolean;
 }
 
-/** GET /api/v1/dropdown/client-cities (auth:client) → [{ key: cityId, value: name }]. */
+interface Branch {
+  id: number;
+  name: string;
+}
+
+interface Zone {
+  id: number;
+  name: string;
+}
+
+interface Rider {
+  id: number;
+  name: string;
+}
+
+const toOption = (row: { id: number; name: string }): KeyValueOption => ({
+  key: String(row.id),
+  value: row.name,
+});
+
+// --- Client-guard dropdowns --------------------------------------------------
+
+/**
+ * GET /client-portal/cities — the cities a customer may address an order to.
+ *
+ * Note this is NOT /geo/cities: that router is staff-only, by design. The
+ * client-portal projection returns active cities only.
+ */
 export async function getClientCities(): Promise<KeyValueOption[]> {
-  const res = await api.get<ApiResponse<KeyValueOption[]>>(
-    "/v1/dropdown/client-cities"
-  );
-  return unwrap<KeyValueOption[]>(res) ?? [];
+  const cities = await get<City[]>("/client-portal/cities");
+  return cities.map(toOption);
 }
 
-/** GET /api/v1/dropdown/client-pickup-vehicle-types → [{ key: id, value: type_name }]. */
-export async function getClientPickupVehicleTypes(): Promise<KeyValueOption[]> {
-  const res = await api.get<ApiResponse<KeyValueOption[]>>(
-    "/v1/dropdown/client-pickup-vehicle-types"
-  );
-  return unwrap<KeyValueOption[]>(res) ?? [];
+/** GET /client-portal/order-statuses — catalogue, already in pipeline order. */
+export async function getClientStatusTypes(): Promise<KeyValueOption[]> {
+  const statuses = await get<OrderStatus[]>("/client-portal/order-statuses");
+  return statuses.map((s) => ({ key: s.key, value: s.name }));
 }
 
-/** GET /api/v1/dropdown/cities (no auth) → [{ key: cityId, value: name }]. Used by staff forms too. */
+// --- Staff-guard dropdowns ---------------------------------------------------
+
+/** GET /geo/cities — staff view, includes inactive cities. */
 export async function getCities(): Promise<KeyValueOption[]> {
-  const res = await api.get<ApiResponse<KeyValueOption[]>>("/v1/dropdown/cities");
-  return unwrap<KeyValueOption[]>(res) ?? [];
+  const cities = await get<City[]>("/geo/cities");
+  return cities.map(toOption);
 }
 
-/** GET /api/v1/dropdown/branches (auth:staff) → [{ key: branchId, value: name }]. */
+/** GET /geo/branches */
 export async function getBranches(): Promise<KeyValueOption[]> {
-  const res = await api.get<ApiResponse<KeyValueOption[]>>("/v1/dropdown/branches");
-  return unwrap<KeyValueOption[]>(res) ?? [];
+  const branches = await get<Branch[]>("/geo/branches");
+  return branches.map(toOption);
 }
 
-/** GET /api/v1/dropdown/clients?search=&limit= (auth:staff) → [{ key: clientId, value: name }]. */
-export async function getClientsDropdown(search?: string): Promise<KeyValueOption[]> {
-  const res = await api.get<ApiResponse<KeyValueOption[]>>("/v1/dropdown/clients", {
-    params: { search: search || undefined, limit: 50 },
-  });
-  return unwrap<KeyValueOption[]>(res) ?? [];
-}
-
-/** GET /api/v1/dropdown/statuses (auth:staff) → [{ key, value: label }] — order status list. */
-export async function getOrderStatusDropdown(): Promise<KeyValueOption[]> {
-  const res = await api.get<ApiResponse<KeyValueOption[]>>("/v1/dropdown/statuses");
-  return unwrap<KeyValueOption[]>(res) ?? [];
-}
-
-/** GET /api/v1/dropdown/primary-status-type (auth:staff) → [{ key: "key_8", value: "Delivered" }]. */
-export async function getPrimaryStatusTypes(): Promise<KeyValueOption[]> {
-  const res = await api.get<ApiResponse<KeyValueOption[]>>(
-    "/v1/dropdown/primary-status-type"
-  );
-  return unwrap<KeyValueOption[]>(res) ?? [];
-}
-
-/** GET /api/v1/dropdown/riders (auth:staff) → [{ key: staffId, value: name }]. */
-export async function getRidersDropdown(): Promise<KeyValueOption[]> {
-  const res = await api.get<ApiResponse<KeyValueOption[]>>("/v1/dropdown/riders");
-  return unwrap<KeyValueOption[]>(res) ?? [];
-}
-
-/** GET /api/v1/dropdown/sorting-layers (auth:staff) → [{ key: id, value: name }]. */
-export async function getSortingLayersDropdown(): Promise<KeyValueOption[]> {
-  const res = await api.get<ApiResponse<KeyValueOption[]>>(
-    "/v1/dropdown/sorting-layers"
-  );
-  return unwrap<KeyValueOption[]>(res) ?? [];
-}
-
-/** GET /api/v1/dropdown/reason-types (auth:staff) → [{ key: id, value: name }]. */
-export async function getReasonTypesDropdown(): Promise<KeyValueOption[]> {
-  const res = await api.get<ApiResponse<KeyValueOption[]>>("/v1/dropdown/reason-types");
-  return unwrap<KeyValueOption[]>(res) ?? [];
-}
-
-/** GET /api/v1/dropdown/staff?search=&limit= (auth:staff) → [{ key: staffId, value: name }]. */
-export async function getStaffDropdown(search?: string): Promise<KeyValueOption[]> {
-  const res = await api.get<ApiResponse<KeyValueOption[]>>("/v1/dropdown/staff", {
-    params: { search: search || undefined, limit: 50 },
-  });
-  return unwrap<KeyValueOption[]>(res) ?? [];
-}
-
-/** GET /api/v1/dropdown/tax-types (auth:staff) → [{ key: id, value: name }]. */
-export async function getTaxTypesDropdown(): Promise<KeyValueOption[]> {
-  const res = await api.get<ApiResponse<KeyValueOption[]>>("/v1/dropdown/tax-types");
-  return unwrap<KeyValueOption[]>(res) ?? [];
-}
-
-/** GET /api/v1/dropdown/roles (auth:staff) → [{ key: id, value: name }] (staff-guard roles). */
-export async function getRolesDropdown(): Promise<KeyValueOption[]> {
-  const res = await api.get<ApiResponse<KeyValueOption[]>>("/v1/dropdown/roles");
-  return unwrap<KeyValueOption[]>(res) ?? [];
-}
-
-/** GET /api/v1/dropdown/permissions (auth:staff) → [{ key: id, value: name }]. */
-export async function getPermissionsDropdown(): Promise<KeyValueOption[]> {
-  const res = await api.get<ApiResponse<KeyValueOption[]>>("/v1/dropdown/permissions");
-  return unwrap<KeyValueOption[]>(res) ?? [];
-}
-
-/** GET /api/v1/dropdown/district (auth:staff) → [{ key: id, value: name }]. */
-export async function getDistrictDropdown(): Promise<KeyValueOption[]> {
-  const res = await api.get<ApiResponse<KeyValueOption[]>>("/v1/dropdown/district");
-  return unwrap<KeyValueOption[]>(res) ?? [];
-}
-
-/** GET /api/v1/dropdown/zones (auth:staff) → [{ key: id, value: name }]. */
+/** GET /geo/zones */
 export async function getZonesDropdown(): Promise<KeyValueOption[]> {
-  const res = await api.get<ApiResponse<KeyValueOption[]>>("/v1/dropdown/zones");
-  return unwrap<KeyValueOption[]>(res) ?? [];
+  const zones = await get<Zone[]>("/geo/zones");
+  return zones.map(toOption);
 }
 
-/** GET /api/v1/dropdown/expense-types (auth:staff) → [{ key: id, value: name }]. */
+/** GET /fleet/riders */
+export async function getRidersDropdown(): Promise<KeyValueOption[]> {
+  const riders = await get<Rider[]>("/fleet/riders");
+  return riders.map(toOption);
+}
+
+// --- Not available on this backend -------------------------------------------
+// Each of these had a Laravel `/dropdown/*` endpoint with no counterpart here.
+// They throw rather than return [], so a form never renders an empty select
+// that looks like "there are none" when it really means "we could not ask".
+
+/** No staff-facing status catalogue endpoint exists (the client one is client-only). */
+export async function getOrderStatusDropdown(): Promise<KeyValueOption[]> {
+  return unavailable("Order status list (staff)");
+}
+
+export async function getPrimaryStatusTypes(): Promise<KeyValueOption[]> {
+  return unavailable("Primary status types");
+}
+
+export async function getClientPickupVehicleTypes(): Promise<KeyValueOption[]> {
+  return unavailable("Pickup vehicle types");
+}
+
+export async function getClientsDropdown(search?: string): Promise<KeyValueOption[]> {
+  // The search term is folded into the message rather than dropped: when this
+  // surfaces in a toast, "Client search \"acme\"" tells you which control failed.
+  return unavailable(search ? `Client search "${search}"` : "Client list");
+}
+
+export async function getStaffDropdown(search?: string): Promise<KeyValueOption[]> {
+  return unavailable(search ? `Staff search "${search}"` : "Staff list");
+}
+
+export async function getSortingLayersDropdown(): Promise<KeyValueOption[]> {
+  return unavailable("Sorting layers");
+}
+
+export async function getReasonTypesDropdown(): Promise<KeyValueOption[]> {
+  return unavailable("Reason types");
+}
+
+export async function getTaxTypesDropdown(): Promise<KeyValueOption[]> {
+  return unavailable("Tax types");
+}
+
+export async function getRolesDropdown(): Promise<KeyValueOption[]> {
+  return unavailable("Roles");
+}
+
+export async function getPermissionsDropdown(): Promise<KeyValueOption[]> {
+  return unavailable("Permissions");
+}
+
+export async function getDistrictDropdown(): Promise<KeyValueOption[]> {
+  return unavailable("Districts");
+}
+
 export async function getExpenseTypesDropdown(): Promise<KeyValueOption[]> {
-  const res = await api.get<ApiResponse<KeyValueOption[]>>("/v1/dropdown/expense-types");
-  return unwrap<KeyValueOption[]>(res) ?? [];
+  return unavailable("Expense types");
 }

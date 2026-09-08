@@ -1,16 +1,20 @@
 import { useQuery } from "@tanstack/react-query";
-import { getOrdersChart, getStatusStatistics } from "@/lib/api/dashboard";
+import { getDashboardSummary, orderedStatusCounts } from "@/lib/api/dashboard";
 
-export function useStatusStatistics(statuses?: string[]) {
+/** Status counts for the dashboard cards, in a fixed display order. */
+export function useStatusStatistics() {
   return useQuery({
-    queryKey: ["dashboard-status-stats", statuses],
-    queryFn: () => getStatusStatistics(statuses),
+    queryKey: ["dashboard-summary"],
+    queryFn: getDashboardSummary,
+    select: orderedStatusCounts,
   });
 }
 
-export function useOrdersChart() {
+/** Total order count, from the same single request as the cards. */
+export function useDashboardTotals() {
   return useQuery({
-    queryKey: ["dashboard-orders-chart"],
-    queryFn: getOrdersChart,
+    queryKey: ["dashboard-summary"],
+    queryFn: getDashboardSummary,
+    select: (summary) => summary.total_orders,
   });
 }

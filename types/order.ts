@@ -1,93 +1,89 @@
+import type { ListRange } from "@/types/api";
+
+/** The status catalogue entry embedded in every order. */
+export interface OrderStatus {
+  id: number;
+  key: string;
+  name: string;
+  category: string;
+  is_terminal: boolean;
+}
+
 /**
- * A row from GET /api/v1/client-orders/list (ClientOrdersListAction::getSelectQuery).
- * The list is paginated via the standard "table" envelope.
+ * `OrderOut` from the backend, used verbatim for both the list and detail
+ * views — the API returns the same model for `GET /client-portal/orders` and
+ * `GET /client-portal/orders/{id}`, so there is no separate "row" type.
+ *
+ * Money and weight arrive as **strings**, not numbers: they are Postgres
+ * NUMERIC columns and are serialised as decimal strings so no value is
+ * rounded through a float on the way here. Parse at the point of display,
+ * never for arithmetic that matters.
  */
-export interface ClientOrderRow {
+export interface ClientOrder {
   id: number;
-  order_date: string;
-  waybill_id: string;
-  order_no: string | null;
-  customer_name: string;
-  delivery_address: string | null;
-  phone_no: string | null;
-  cod: number | string | null;
-  delivery_charge: number | string | null;
-  district: string | null;
-  city: string | null;
-  city_id: number | null;
-  district_id: number | null;
-  rider: string | null;
-  description: string | null;
-  remarks: string | null;
-  status_changed_date: string | null;
-  invoice_no: string | null;
-  /** Primary status display name (e.g. "Delivered"). */
-  status: string | null;
-  enter_by: string | null;
-  /** Present only when the client has AI delivery progress enabled. */
-  delivery_progress?: number;
-}
-
-/** Full order detail from GET /api/v1/client-orders/{order} → data.order_details. */
-export interface ClientOrderDetail {
-  id: number;
-  waybill_id: string;
-  order_no: string | null;
-  customer_name: string;
-  address: string | null;
-  phone_no: string | null;
-  phone_no_1?: string | null;
-  phone_no_2?: string | null;
-  cod: number | string | null;
-  delivery_charge: number | string | null;
-  description: string | null;
-  note: string | null;
-  created_at?: string;
-  [key: string]: unknown;
-}
-
-/** A tracking history entry from GET /api/v1/client-orders/tracking/{order}. */
-export interface OrderTrackEntry {
-  status_name: string | null;
-  status_created_at: string | null;
-  remarks: string | null;
-  name?: string | null;
-  status_id: number | null;
-  media_urls?: { url: string; file_name: string }[];
-}
-
-/** Payload for POST /api/v1/client-orders/create. */
-export interface CreateClientOrderPayload {
-  client_id?: number;
-  /** Required only when the client is in Manual waybill mode. */
-  waybill_id?: string;
-  order_no: string;
-  customer_name: string;
-  address: string;
-  phone_no: string;
-  phone_no2?: string;
-  description?: string;
+  waybill_id: string | null;
+  client_id: number;
   city_id: number;
-  cod: number;
-  note?: string;
+  origin_branch_id: number | null;
+  current_branch_id: number | null;
+  current_rider_id: number | null;
+  current_status: OrderStatus;
+  weight_kg: string;
+  cod_amount: string;
+  collected_cod_amount: string;
+  delivery_charge: string | null;
+  delivery_attempts: number;
+  recipient_name: string;
+  recipient_phone: string;
+  recipient_address: string;
+  delivery_latitude: number | null;
+  delivery_longitude: number | null;
+  handover_code_required: boolean;
+  handover_verified_at: string | null;
+  handover_attempts: number;
+  pickup_location_name: string | null;
+  pickup_contact_phone: string | null;
+  pickup_address: string | null;
+  pickup_post_office: string | null;
+  pickup_district: string | null;
+  pickup_province: string | null;
+  pickup_latitude: number | null;
+  pickup_longitude: number | null;
+  requested_delivery_date: string | null;
+  requested_delivery_window: string | null;
+  handling: string[] | null;
+  created_at: string;
 }
 
-/** Query parameters accepted by the client orders list endpoint. */
-export interface ClientOrdersListParams {
-  page?: number;
-  perPage?: number;
-  orderBy?: "id" | "order_date" | "waybill_id";
-  orderByDirection?: "asc" | "desc";
-  waybill_id?: string;
-  order_no?: string;
-  customer_name?: string;
-  phone_number?: string;
-  delivery_address?: string;
-  invoice_no?: string;
-  city?: number;
-  district?: number;
-  /** PrimaryStatusType keys, e.g. ["key_8", "key_12"]. */
-  statuses?: string[];
-  /** "YYYY-MM-DD HH:mm - YYYY-MM-DD HH:mm" */
-  order_date?: string;
+/** One entry of `GET /client-portal/orders/{id}/history`, oldest first. */
+export interface OrderHistoryEntry {
+  from_status_id: number | null;
+  to_status: OrderStatus;
+  actor_type: string;
+  actor_id: number | null;
+  reason: string | null;
+  created_at: string;
+}
+
+/**
+ * Query parameters for the client order list.
+ *
+ * Only these three are supported. The Laravel list accepted free-text search,
+ * date ranges and multi-status filters; this endpoint takes a single
+ * `status_key` plus limit/offset, so any richer filtering has to be a backend
+ * change rather than something faked by over-fetching in the browser.
+ */
+export interface ClientOrdersListParams extends ListRange {
+  status_key?: string;
+}
+
+/** Body for `POST /client-portal/orders` (ClientOrderCreate). */
+export interface CreateClientOrderPayload {
+  city_id: number;
+  origin_branch_id?: number | null;
+  weight_kg?: string | number | null;
+  cod_amount?: string | number | null;
+  recipient_name: string;
+  recipient_phone: string;
+  recipient_address: string;
 }

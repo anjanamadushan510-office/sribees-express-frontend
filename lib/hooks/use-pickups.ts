@@ -4,17 +4,8 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import {
-  cancelPickupRequest,
-  createPickupRequest,
-  listClientPickups,
-} from "@/lib/api/pickups";
-import { getClientPickupVehicleTypes } from "@/lib/api/dropdowns";
-import type {
-  CancelPickupPayload,
-  CreatePickupPayload,
-  PickupListParams,
-} from "@/types/pickup";
+import { createClientPickup, listClientPickups } from "@/lib/api/pickups";
+import type { CreatePickupPayload, PickupListParams } from "@/types/pickup";
 
 export function useClientPickups(params: PickupListParams) {
   return useQuery({
@@ -24,26 +15,14 @@ export function useClientPickups(params: PickupListParams) {
   });
 }
 
-export function usePickupVehicleTypes() {
-  return useQuery({
-    queryKey: ["pickup-vehicle-types"],
-    queryFn: getClientPickupVehicleTypes,
-    staleTime: 60 * 60 * 1000,
-  });
-}
-
 export function useCreatePickup() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (payload: CreatePickupPayload) => createPickupRequest(payload),
+    mutationFn: (payload: CreatePickupPayload) => createClientPickup(payload),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["client-pickups"] }),
   });
 }
 
-export function useCancelPickup() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (payload: CancelPickupPayload) => cancelPickupRequest(payload),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["client-pickups"] }),
-  });
-}
+// `useCancelPickup` is gone: this backend has no cancel endpoint for a pickup
+// request (see docs/API-GAPS.md). A dialog that cannot cancel anything is
+// worse than no button, so the UI drops the action rather than faking it.

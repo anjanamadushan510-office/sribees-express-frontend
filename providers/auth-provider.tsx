@@ -4,14 +4,14 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 import { useRouter } from "next/navigation";
 import { login as apiLogin, logout as apiLogout } from "@/lib/api/auth";
-import { loadSession } from "@/lib/auth/session";
+import { loadSession, subscribeToStorage } from "@/lib/auth/session";
 import type { GuardType, LoginCredentials, Session } from "@/types/auth";
 
 interface AuthContextValue {
@@ -19,23 +19,36 @@ interface AuthContextValue {
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (guard: GuardType, credentials: LoginCredentials) => Promise<Session>;
-  logout: () => void;
-  hasPermission: (permission: string) => boolean;
+  logout: () => Promise<void>;
   hasRole: (role: string) => boolean;
+  hasPermission: (permission: string) => boolean;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
-  const [session, setSession] = useState<Session | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
 
-  // Rehydrate from localStorage on mount (client-only).
-  useEffect(() => {
-    setSession(loadSession());
-    setIsLoading(false);
-  }, []);
+  // The stored session lives in localStorage, which the server cannot read.
+  // `useSyncExternalStore` is the hydration-safe way to surface that: the
+  // server renders the signed-out snapshot, and the client swaps in the real
+  // one during hydration rather than through an extra setState-in-effect pass.
+  const stored = useSyncExternalStore(subscribeToStorage, loadSession, () => null);
+
+  // A local override so login/logout update instantly without waiting for a
+  // storage event (which the writing tab never receives).
+  const [override, setOverride] = useState<Session | null | undefined>(undefined);
+  const session = override === undefined ? stored : override;
+
+  // Only the very first client render is "loading"; after hydration the
+  // localStorage answer is known synchronously.
+  const isLoading = useSyncExternalStore(
+    subscribeToStorage,
+    () => false,
+    () => true
+  );
+
+  const setSession = setOverride;
 
   const login = useCallback(
     async (guard: GuardType, credentials: LoginCredentials) => {
@@ -43,25 +56,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(next);
       return next;
     },
-    []
+    [setSession]
   );
 
-  const logout = useCallback(() => {
-    const guard = session?.guard;
-    apiLogout();
+  const logout = useCallback(async () => {
+    const guard = session?.guard ?? "client";
+    // Staff logout revokes the refresh token server-side, so it is awaited —
+    // clearing locally while the token stays valid on the server is not a
+    // logout, it is just hiding the session from this browser.
+    await apiLogout(guard);
     setSession(null);
     router.push(guard === "staff" ? "/admin/login" : "/login");
-  }, [router, session?.guard]);
-
-  const hasPermission = useCallback(
-    (permission: string) => session?.permissions.includes(permission) ?? false,
-    [session]
-  );
+  }, [router, session?.guard, setSession]);
 
   const hasRole = useCallback(
     (role: string) => session?.roles.includes(role) ?? false,
     [session]
   );
+
+  /**
+   * Permission checks are NOT enforced client-side, and deliberately so.
+   *
+   * This backend exposes roles but no permission list, so there is no data to
+   * answer `hasPermission("approve-expense")` with. Both alternatives are
+   * worse than deferring: returning `false` hides every admin action and makes
+   * the app look broken, while pretending to check something we cannot see
+   * dresses UX up as security.
+   *
+   * So this returns true and lets the API's 403 be the authority — which it
+   * always was. When the backend grows a permissions claim, read it here and
+   * this becomes a real check without touching a single call site.
+   */
+  const hasPermission = useCallback<(permission: string) => boolean>(() => true, []);
 
   const value = useMemo<AuthContextValue>(
     () => ({
@@ -70,10 +96,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isLoading,
       login,
       logout,
-      hasPermission,
       hasRole,
+      hasPermission,
     }),
-    [session, isLoading, login, logout, hasPermission, hasRole]
+    [session, isLoading, login, logout, hasRole, hasPermission]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
