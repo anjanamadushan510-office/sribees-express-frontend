@@ -13,6 +13,9 @@
 # testing
 /coverage
 
+# throwaway QA sweep screenshots/output (scripts/qa-sweep.mjs)
+/scripts/qa-output/
+
 # next.js
 /.next/
 /out/
@@ -32,6 +35,9 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# ...except the template. A repo with no example env leaves the next person
+# guessing which variables exist at all.
+!.env.example
 
 # vercel
 .vercel
