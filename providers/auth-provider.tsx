@@ -26,6 +26,12 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+// Module-level so their identity is stable across renders. Inline arrows here
+// would make useSyncExternalStore tear down and resubscribe every render.
+const notLoadingSnapshot = () => false;
+const loadingServerSnapshot = () => true;
+const noSessionServerSnapshot = () => null;
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
 
@@ -33,7 +39,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // `useSyncExternalStore` is the hydration-safe way to surface that: the
   // server renders the signed-out snapshot, and the client swaps in the real
   // one during hydration rather than through an extra setState-in-effect pass.
-  const stored = useSyncExternalStore(subscribeToStorage, loadSession, () => null);
+  const stored = useSyncExternalStore(subscribeToStorage, loadSession, noSessionServerSnapshot);
 
   // A local override so login/logout update instantly without waiting for a
   // storage event (which the writing tab never receives).
@@ -44,8 +50,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // localStorage answer is known synchronously.
   const isLoading = useSyncExternalStore(
     subscribeToStorage,
-    () => false,
-    () => true
+    notLoadingSnapshot,
+    loadingServerSnapshot
   );
 
   const setSession = setOverride;

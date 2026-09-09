@@ -41,7 +41,7 @@ export function useClientStatusTypes() {
   return useQuery({
     queryKey: ["client-status-types"],
     queryFn: getClientStatusTypes,
-    staleTime: 60 * 60 * 1000, // status list rarely changes
+    staleTime: 60 * 60 * 1000, // the status catalogue rarely changes
   });
 }
 

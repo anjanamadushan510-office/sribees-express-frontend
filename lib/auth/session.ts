@@ -49,15 +49,37 @@ export function updateTokens(tokens: TokenPair): void {
   });
 }
 
+/**
+ * Parsed-session cache, keyed by the raw string it came from.
+ *
+ * This is not a performance tweak — it is required for correctness.
+ * `loadSession` is a `useSyncExternalStore` snapshot (see providers/
+ * auth-provider.tsx), and React compares snapshots with `Object.is`. A fresh
+ * `JSON.parse` result is a new object every call, so every render would look
+ * like a change and re-render forever: React reports it as "The result of
+ * getSnapshot should be cached to avoid an infinite loop", followed by
+ * "Maximum update depth exceeded".
+ *
+ * Returning the same object while the stored string is unchanged makes the
+ * snapshot stable, and any real write produces a different string.
+ */
+let cachedRaw: string | null = null;
+let cachedSession: Session | null = null;
+
 export function loadSession(): Session | null {
   if (!isBrowser) return null;
   const raw = localStorage.getItem(STORAGE_KEYS.session);
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as Session;
-  } catch {
-    return null;
+  if (raw === cachedRaw) return cachedSession;
+  cachedRaw = raw;
+  cachedSession = null;
+  if (raw) {
+    try {
+      cachedSession = JSON.parse(raw) as Session;
+    } catch {
+      cachedSession = null;
+    }
   }
+  return cachedSession;
 }
 
 export function getToken(): string | null {

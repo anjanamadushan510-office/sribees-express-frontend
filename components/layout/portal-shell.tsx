@@ -159,6 +159,9 @@ function SidebarBody({
   );
 }
 
+const noopSubscribe = () => () => {};
+const neutralGreeting = () => "Hello";
+
 /** Time-of-day greeting. Depends on the viewer's clock, which the server does
  *  not have, so it renders neutrally on the server and refines after mount. */
 function greetingForNow(): string {
@@ -172,11 +175,7 @@ function GreetingPill() {
   // snapshot is the neutral "Hello", the client snapshot reads the clock. This
   // is the hydration-safe way to render browser-only state — an effect that
   // calls setState on mount does the same thing via an extra render pass.
-  const greeting = useSyncExternalStore(
-    () => () => {},
-    greetingForNow,
-    () => "Hello"
-  );
+  const greeting = useSyncExternalStore(noopSubscribe, greetingForNow, neutralGreeting);
 
   const name = session?.user.name ?? session?.user.email ?? "there";
 

@@ -3,6 +3,8 @@
 import type { LucideIcon } from "lucide-react";
 import {
   RefreshCw,
+  CalendarClock,
+  PackagePlus,
   Plane,
   Warehouse,
   MapPin,
@@ -25,8 +27,10 @@ import { Sparkline } from "@/components/charts/sparkline";
  * of disappearing.
  */
 const STATUS_META: Record<string, { icon: LucideIcon; color: string }> = {
-  processing: { icon: RefreshCw, color: "#3b82f6" },
-  collected_from_warehouse: { icon: Warehouse, color: "#10b981" },
+  pending: { icon: RefreshCw, color: "#3b82f6" },
+  pickup_scheduled: { icon: CalendarClock, color: "#6366f1" },
+  picked_up: { icon: PackagePlus, color: "#8b5cf6" },
+  collected_at_sorting_center: { icon: Warehouse, color: "#10b981" },
   dispatched_to_destination: { icon: Plane, color: "#a855f7" },
   received_at_destination: { icon: MapPin, color: "#f59e0b" },
   out_for_delivery: { icon: Bike, color: "#15803d" },

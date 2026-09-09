@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -13,6 +13,11 @@ import type { GuardType } from "@/types/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+
+// Module-level for a stable identity — see the note in providers/auth-provider.tsx.
+const noopSubscribe = () => () => {};
+const isHydrated = () => true;
+const notHydrated = () => false;
 
 const schema = z.object({
   email: z.string().trim().email("Enter a valid email address"),
@@ -30,6 +35,11 @@ export function LoginForm({
   const router = useRouter();
   const { login } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
+
+  // False during SSR and the first client render, true once React has taken
+  // over. Gating submit on it means the button cannot fire a native, unhandled
+  // submit in the window before hydration.
+  const hydrated = useSyncExternalStore(noopSubscribe, isHydrated, notHydrated);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -52,7 +62,17 @@ export function LoginForm({
   const isSubmitting = form.formState.isSubmitting;
 
   return (
-    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+    <form
+      onSubmit={form.handleSubmit(onSubmit)}
+      // POST, not the default GET. Before React hydrates, `onSubmit` is not
+      // attached yet, so pressing Enter performs a NATIVE submit — and a
+      // native GET puts the password in the query string, where it lands in
+      // the address bar, browser history, and every proxy and access log on
+      // the way. `method="post"` makes that stray submit a body instead, and
+      // the disabled button below keeps it from happening at all.
+      method="post"
+      className="space-y-4"
+    >
       <div className="space-y-2">
         <Label htmlFor="email">Email</Label>
         <Input
@@ -95,7 +115,7 @@ export function LoginForm({
         )}
       </div>
 
-      <Button type="submit" className="w-full" disabled={isSubmitting}>
+      <Button type="submit" className="w-full" disabled={isSubmitting || !hydrated}>
         {isSubmitting && <Loader2 className="size-4 animate-spin" />}
         Sign in
       </Button>
