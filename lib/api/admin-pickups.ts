@@ -1,50 +1,49 @@
-import { api, unwrapPaginated } from "@/lib/api/client";
-import type { ApiResponse, Paginated } from "@/types/api";
-import type {
-  AdminPickupListParams,
-  AdminPickupRow,
-  AssignRiderPayload,
-  CancelOrFailPickupPayload,
-  PickupRequestIdsPayload,
-} from "@/types/admin-pickup";
+import { api, get, queryParams } from "@/lib/api/client";
+import type { PickupRequest } from "@/types/pickup";
+import type { AdminPickupListParams } from "@/types/admin-pickup";
 
-/** GET /api/v1/pickup-request/list — paginated, staff-wide pickup request list. */
-export async function listAdminPickups(
-  params: AdminPickupListParams
-): Promise<Paginated<AdminPickupRow>> {
-  const res = await api.get<ApiResponse<AdminPickupRow[]>>("/v1/pickup-request/list", {
-    params: clean(params),
+/**
+ * GET /shipments/pickup-requests
+ *
+ * No limit/offset on this endpoint — it returns the whole filtered set, so the
+ * list is not paged. That is fine at current volume and will not be forever;
+ * paging it is a backend change, noted in docs/API-GAPS.md.
+ */
+export async function listPickupRequests(
+  params: AdminPickupListParams = {}
+): Promise<PickupRequest[]> {
+  return get<PickupRequest[]>("/shipments/pickup-requests", {
+    params: queryParams({ ...params }),
   });
-  return unwrapPaginated<AdminPickupRow>(res);
 }
 
-/** POST /api/v1/pickup-request/assign-rider. */
-export async function assignPickupRider(payload: AssignRiderPayload): Promise<void> {
-  await api.post("/v1/pickup-request/assign-rider", payload);
+/** GET /shipments/pickup-requests/{id} */
+export async function getPickupRequest(
+  pickupId: number | string
+): Promise<PickupRequest> {
+  return get<PickupRequest>(`/shipments/pickup-requests/${pickupId}`);
 }
 
-/** POST /api/v1/pickup-request/branch-received. */
-export async function receivePickupAtBranch(
-  payload: PickupRequestIdsPayload
-): Promise<void> {
-  await api.post("/v1/pickup-request/branch-received", payload);
+/** POST /shipments/pickup-requests/{id}/assign-rider */
+export async function assignRiderToPickup(
+  pickupId: number | string,
+  riderId: number
+): Promise<PickupRequest> {
+  const { data } = await api.post<PickupRequest>(
+    `/shipments/pickup-requests/${pickupId}/assign-rider`,
+    { rider_id: riderId }
+  );
+  return data;
 }
 
-/** POST /api/v1/pickup-request/cancel-pickup. */
-export async function cancelAdminPickup(payload: CancelOrFailPickupPayload): Promise<void> {
-  await api.post("/v1/pickup-request/cancel-pickup", payload);
-}
-
-/** POST /api/v1/pickup-request/fail-pickup. */
-export async function failAdminPickup(payload: CancelOrFailPickupPayload): Promise<void> {
-  await api.post("/v1/pickup-request/fail-pickup", payload);
-}
-
-function clean(params: AdminPickupListParams): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(params)) {
-    if (v === undefined || v === null || v === "") continue;
-    out[k] = v;
-  }
-  return out;
+/** POST /shipments/pickup-requests/{id}/status */
+export async function setPickupStatus(
+  pickupId: number | string,
+  status: string
+): Promise<PickupRequest> {
+  const { data } = await api.post<PickupRequest>(
+    `/shipments/pickup-requests/${pickupId}/status`,
+    { status }
+  );
+  return data;
 }

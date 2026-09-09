@@ -2,58 +2,45 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
-import { useNotificationDetail, useUpdateNotification } from "@/lib/hooks/use-admin-notifications";
+import { Check, Loader2, X } from "lucide-react";
+import { useUpdateNotificationSetting } from "@/lib/hooks/use-admin-notifications";
 import { getErrorMessage } from "@/lib/api/client";
-import type { NotificationDetail } from "@/types/admin-notification";
+import type { NotificationSetting } from "@/types/admin-notification";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 
+/**
+ * Edit one notification template.
+ *
+ * Takes the whole `setting` rather than an id: the list already holds every
+ * field, so fetching a detail view would re-request data we have — and this
+ * API has no per-setting GET anyway.
+ */
 export function NotificationEditDialog({
-  channel,
-  id,
-  onOpenChange,
+  setting,
+  onClose,
 }: {
-  channel: "sms" | "ereceipt";
-  id: number | null;
-  onOpenChange: (open: boolean) => void;
+  setting: NotificationSetting | null;
+  onClose: () => void;
 }) {
-  const { data, isLoading, isError } = useNotificationDetail(channel, id);
-
   return (
-    <Dialog open={id !== null} onOpenChange={onOpenChange}>
+    <Dialog open={setting !== null} onOpenChange={(open) => !open && onClose()}>
       <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Edit {channel === "sms" ? "SMS" : "E-receipt"} notification</DialogTitle>
-        </DialogHeader>
-
-        {isLoading ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
-        ) : isError || !data ? (
-          <p className="text-sm text-muted-foreground">Could not load this setting.</p>
-        ) : (
-          <EditForm
-            key={id}
-            channel={channel}
-            id={id as number}
-            data={data}
-            onDone={() => onOpenChange(false)}
-          />
+        {setting && (
+          // `key` remounts the form when a different setting is opened, which
+          // seeds the fields from props with no effect and no setState during
+          // an effect. Resetting state in a useEffect is the same thing done
+          // one render later, and React's compiler lint flags it for that.
+          <EditForm key={setting.id} setting={setting} onClose={onClose} />
         )}
       </DialogContent>
     </Dialog>
@@ -61,92 +48,98 @@ export function NotificationEditDialog({
 }
 
 function EditForm({
-  channel,
-  id,
-  data,
-  onDone,
+  setting,
+  onClose,
 }: {
-  channel: "sms" | "ereceipt";
-  id: number;
-  data: NotificationDetail;
-  onDone: () => void;
+  setting: NotificationSetting;
+  onClose: () => void;
 }) {
-  const [messageBody, setMessageBody] = useState(data.message_body ?? "");
-  const [clientActive, setClientActive] = useState(!!data.is_client_active);
-  const [customerActive, setCustomerActive] = useState(!!data.is_customer_active);
-  const mutation = useUpdateNotification(channel, id);
+  const [template, setTemplate] = useState(setting.message_template);
+  const [isActive, setIsActive] = useState(setting.is_active);
+  const mutation = useUpdateNotificationSetting();
+
+  const dirty =
+    template !== setting.message_template || isActive !== setting.is_active;
 
   const submit = () => {
+    if (!dirty) return;
     mutation.mutate(
       {
-        message_body: messageBody || undefined,
-        is_client_active: clientActive,
-        is_customer_active: customerActive,
+        id: setting.id,
+        // Only what changed — this is a PATCH, so resending an unchanged
+        // template would needlessly clobber a concurrent edit of it.
+        payload: {
+          ...(template !== setting.message_template
+            ? { message_template: template }
+            : {}),
+          ...(isActive !== setting.is_active ? { is_active: isActive } : {}),
+        },
       },
       {
         onSuccess: () => {
-          toast.success("Notification setting updated");
-          onDone();
+          toast.success("Notification setting saved");
+          onClose();
         },
-        onError: (error) => toast.error(getErrorMessage(error, "Could not save changes")),
+        onError: (error) =>
+          toast.error(getErrorMessage(error, "Could not save the setting")),
       }
     );
   };
 
   return (
-    <div className="space-y-3">
-      <p className="text-sm text-muted-foreground">Status: {data.status}</p>
-      <div>
-        <Label className="mb-1.5 block">Message body</Label>
-        <Textarea
-          value={messageBody}
-          onChange={(e) => setMessageBody(e.target.value)}
-          rows={3}
-          maxLength={200}
-        />
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <Label className="mb-1.5 block">Notify client</Label>
-          <Select
-            value={clientActive ? "yes" : "no"}
-            onValueChange={(v) => setClientActive(v === "yes")}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="yes">Yes</SelectItem>
-              <SelectItem value="no">No</SelectItem>
-            </SelectContent>
-          </Select>
+    <>
+      <DialogHeader>
+        <DialogTitle>Edit notification</DialogTitle>
+        <DialogDescription>
+          {setting.channel} · {setting.key}
+        </DialogDescription>
+      </DialogHeader>
+
+      <div className="space-y-4">
+        <div className="space-y-1.5">
+          <Label htmlFor="message_template">Message template</Label>
+          <Textarea
+            id="message_template"
+            rows={5}
+            value={template}
+            onChange={(e) => setTemplate(e.target.value)}
+          />
+          <p className="text-xs text-muted-foreground">
+            Placeholders are substituted by the backend when the message is sent.
+          </p>
         </div>
-        <div>
-          <Label className="mb-1.5 block">Notify customer</Label>
-          <Select
-            value={customerActive ? "yes" : "no"}
-            onValueChange={(v) => setCustomerActive(v === "yes")}
+
+        <div className="flex items-center justify-between rounded-lg border p-3">
+          <div>
+            <Label htmlFor="is_active">Active</Label>
+            <p className="text-xs text-muted-foreground">
+              Turn off to stop sending this notification.
+            </p>
+          </div>
+          {/* This design system has no Switch primitive; a two-state button is
+              clearer than adding a dependency for one control. */}
+          <Button
+            id="is_active"
+            type="button"
+            variant={isActive ? "default" : "outline"}
+            size="sm"
+            onClick={() => setIsActive((v) => !v)}
           >
-            <SelectTrigger className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="yes">Yes</SelectItem>
-              <SelectItem value="no">No</SelectItem>
-            </SelectContent>
-          </Select>
+            {isActive ? <Check className="size-4" /> : <X className="size-4" />}
+            {isActive ? "On" : "Off"}
+          </Button>
         </div>
       </div>
 
       <DialogFooter>
-        <Button type="button" variant="outline" onClick={onDone}>
+        <Button variant="outline" onClick={onClose} disabled={mutation.isPending}>
           Cancel
         </Button>
-        <Button disabled={mutation.isPending} onClick={submit}>
+        <Button disabled={!dirty || mutation.isPending} onClick={submit}>
           {mutation.isPending && <Loader2 className="size-4 animate-spin" />}
-          Save changes
+          Save
         </Button>
       </DialogFooter>
-    </div>
+    </>
   );
 }

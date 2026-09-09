@@ -3,32 +3,30 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, Loader2, Pause, RefreshCw } from "lucide-react";
+import { ArrowLeft, ArrowRightLeft, Bike } from "lucide-react";
 import { toast } from "sonner";
-import { useAuth } from "@/providers/auth-provider";
 import {
   useAdminOrder,
-  useAdminPrimaryStatusTypes,
-  useAdminSortingLayers,
-  useCreateAdminOrderRemark,
-  useHoldAdminOrder,
+  useAdminOrderHistory,
+  useAdminStatusCatalogue,
   useUpdateAdminOrderStatus,
 } from "@/lib/hooks/use-admin-orders";
+import { useAssignRiderToOrder, useRiders } from "@/lib/hooks/use-admin-riders";
 import { getErrorMessage } from "@/lib/api/client";
 import { formatCurrency, formatDate } from "@/lib/format";
+import { PageHeader } from "@/components/shared/page-header";
+import { StatusBadge } from "@/components/shared/status-badge";
+import { TrackingTimeline } from "@/components/shared/tracking-timeline";
+import type { TrackingStatusEntry } from "@/types/tracking";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -40,47 +38,24 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { StatusBadge } from "@/components/shared/status-badge";
-import { TrackingTimeline } from "@/components/shared/tracking-timeline";
-import type { TrackingStatusEntry } from "@/types/tracking";
-
-const NONE = "__none__";
 
 export default function AdminPackageDetailPage() {
   const params = useParams<{ id: string }>();
   const id = params.id;
-  const { hasPermission } = useAuth();
 
-  const { data, isLoading, isError } = useAdminOrder(id);
-  const [statusDialogOpen, setStatusDialogOpen] = useState(false);
-  const [remarkText, setRemarkText] = useState("");
+  const { data: order, isLoading } = useAdminOrder(id);
+  const { data: history } = useAdminOrderHistory(id);
+  const [statusOpen, setStatusOpen] = useState(false);
+  const [riderOpen, setRiderOpen] = useState(false);
 
-  const holdMutation = useHoldAdminOrder(id);
-  const remarkMutation = useCreateAdminOrderRemark(id);
-
-  const order = data?.order_details;
-  const history: TrackingStatusEntry[] = (data?.tracking_history ?? [])
+  const timeline: TrackingStatusEntry[] = (history ?? [])
     .slice()
     .reverse()
-    .map((t) => ({
-      name: t.status_name ?? "Unknown",
-      remarks: t.remarks,
-      added_date: t.status_created_at ?? "",
+    .map((entry) => ({
+      name: entry.to_status.name,
+      remarks: entry.reason,
+      added_date: entry.created_at,
     }));
-
-  const submitRemark = () => {
-    if (!order || !remarkText.trim()) return;
-    remarkMutation.mutate(
-      { waybill_id: order.waybill_id, remark: remarkText.trim() },
-      {
-        onSuccess: () => {
-          toast.success("Remark added");
-          setRemarkText("");
-        },
-        onError: (error) => toast.error(getErrorMessage(error, "Could not add remark")),
-      }
-    );
-  };
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -93,195 +68,106 @@ export default function AdminPackageDetailPage() {
 
       {isLoading ? (
         <Skeleton className="h-64 w-full" />
-      ) : isError || !order ? (
-        <Card>
-          <CardContent className="py-10 text-center text-sm text-muted-foreground">
-            Couldn&apos;t load this package. It may not exist, or you may not have
-            permission to view it.
-          </CardContent>
-        </Card>
+      ) : !order ? (
+        <p className="text-muted-foreground">Order not found.</p>
       ) : (
         <>
-          <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">
-                Waybill {order.waybill_id}
-              </h1>
-              {order.order_no && (
-                <p className="text-sm text-muted-foreground">
-                  Order #{order.order_no} · {order.client_name ?? "—"}
-                </p>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              {order.current_status && <StatusBadge status={order.current_status} />}
-              <Button size="sm" onClick={() => setStatusDialogOpen(true)}>
-                <RefreshCw className="size-4" />
-                Update Status
-              </Button>
-              {hasPermission("hold-status") && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={holdMutation.isPending}
-                  onClick={() =>
-                    holdMutation.mutate(undefined, {
-                      onSuccess: () => toast.success("Order hold status updated"),
-                      onError: (error) =>
-                        toast.error(getErrorMessage(error, "Could not update hold status")),
-                    })
-                  }
-                >
-                  {holdMutation.isPending ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <Pause className="size-4" />
-                  )}
-                  Hold
+          <PageHeader
+            title={order.waybill_id ? `Waybill ${order.waybill_id}` : `Order #${order.id}`}
+            description={`Client #${order.client_id} · placed ${formatDate(order.created_at)}`}
+            action={
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" onClick={() => setRiderOpen(true)}>
+                  <Bike className="size-4" />
+                  Assign rider
                 </Button>
-              )}
-            </div>
+                <Button onClick={() => setStatusOpen(true)}>
+                  <ArrowRightLeft className="size-4" />
+                  Move status
+                </Button>
+              </div>
+            }
+          />
+
+          <div className="mb-4">
+            <StatusBadge status={order.current_status.name} />
           </div>
 
+          {/*
+            The remarks and reversal-history panels that used to be here are
+            gone: neither exists on this API. An order's `reason` per status
+            transition is the closest thing, and it is already in the timeline
+            below. See docs/API-GAPS.md.
+          */}
           <Card className="mb-6">
             <CardHeader>
               <CardTitle className="text-base">Order details</CardTitle>
             </CardHeader>
             <CardContent>
               <dl className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
-                <Detail label="Customer">{order.customer_name}</Detail>
-                <Detail label="Phone">{order.customer_phone_no ?? "—"}</Detail>
+                <Detail label="Recipient">{order.recipient_name}</Detail>
+                <Detail label="Phone">{order.recipient_phone}</Detail>
                 <Detail label="Address" className="sm:col-span-2">
-                  {order.customer_address ?? "—"}
+                  {order.recipient_address}
                 </Detail>
-                <Detail label="City / District">
-                  {[order.customer_city, order.customer_district]
-                    .filter(Boolean)
-                    .join(", ") || "—"}
+                <Detail label="COD">{formatCurrency(order.cod_amount)}</Detail>
+                <Detail label="COD collected">
+                  {formatCurrency(order.collected_cod_amount)}
                 </Detail>
-                <Detail label="Branch">
-                  {order.branch_name ?? "—"}
-                  {order.temporary_branch && ` → ${order.temporary_branch}`}
+                <Detail label="Delivery charge">
+                  {order.delivery_charge
+                    ? formatCurrency(order.delivery_charge)
+                    : "Not priced yet"}
                 </Detail>
-                <Detail label="COD">{formatCurrency(order.cod)}</Detail>
-                <Detail label="Collected COD">{formatCurrency(order.collected_cod)}</Detail>
-                <Detail label="Weight">{order.weight ?? "—"}</Detail>
-                <Detail label="Order date">{formatDate(order.order_date)}</Detail>
-                {order.completed_date && (
-                  <Detail label="Completed">{formatDate(order.completed_date)}</Detail>
-                )}
-                {order.description && (
-                  <Detail label="Description" className="sm:col-span-2">
-                    {order.description}
+                <Detail label="Weight">{order.weight_kg} kg</Detail>
+                <Detail label="Delivery attempts">{order.delivery_attempts}</Detail>
+                <Detail label="Assigned rider">
+                  {order.current_rider_id ? `#${order.current_rider_id}` : "Unassigned"}
+                </Detail>
+                <Detail label="Current branch">
+                  {order.current_branch_id ? `#${order.current_branch_id}` : "—"}
+                </Detail>
+                {order.handover_code_required && (
+                  <Detail label="Handover code">
+                    {order.handover_verified_at
+                      ? `Verified ${formatDate(order.handover_verified_at)}`
+                      : `Required (${order.handover_attempts} attempt${
+                          order.handover_attempts === 1 ? "" : "s"
+                        })`}
                   </Detail>
                 )}
-                {order.remarks && (
-                  <Detail label="Note" className="sm:col-span-2">
-                    {order.remarks}
+                {order.pickup_address && (
+                  <Detail label="Pickup from" className="sm:col-span-2">
+                    {order.pickup_address}
                   </Detail>
                 )}
               </dl>
             </CardContent>
           </Card>
 
-          <Card className="mb-6">
+          <Card>
             <CardHeader>
-              <CardTitle className="text-base">Tracking history</CardTitle>
+              <CardTitle className="text-base">Status history</CardTitle>
             </CardHeader>
             <CardContent>
               <Separator className="mb-6" />
-              <TrackingTimeline history={history} />
-            </CardContent>
-          </Card>
-
-          <Card className="mb-6">
-            <CardHeader>
-              <CardTitle className="text-base">Remarks</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {data.order_remarks.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No remarks yet.</p>
+              {timeline.length > 0 ? (
+                <TrackingTimeline history={timeline} />
               ) : (
-                <ul className="space-y-3">
-                  {data.order_remarks.map((r) => (
-                    <li key={r.id} className="rounded-md border p-3 text-sm">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-medium">
-                          {r.remark_by ?? "System"}{" "}
-                          <span className="text-xs font-normal text-muted-foreground">
-                            ({r.remarkable_type ?? "—"})
-                          </span>
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          {formatDate(r.created_at)}
-                        </span>
-                      </div>
-                      <p className="mt-1 text-muted-foreground">{r.remark}</p>
-                    </li>
-                  ))}
-                </ul>
+                <p className="py-4 text-sm text-muted-foreground">
+                  No status changes recorded yet.
+                </p>
               )}
-
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <Textarea
-                  placeholder="Add an internal remark…"
-                  value={remarkText}
-                  onChange={(e) => setRemarkText(e.target.value)}
-                  rows={2}
-                  className="sm:flex-1"
-                />
-                <Button
-                  className="self-end"
-                  disabled={remarkMutation.isPending || !remarkText.trim()}
-                  onClick={submitRemark}
-                >
-                  {remarkMutation.isPending && (
-                    <Loader2 className="size-4 animate-spin" />
-                  )}
-                  Add
-                </Button>
-              </div>
             </CardContent>
           </Card>
-
-          {data.reversal_history.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Reversal history</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-3 text-sm">
-                  {data.reversal_history.map((r) => (
-                    <li key={r.id} className="rounded-md border p-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <span>
-                          {r.from_status ?? "—"} → {r.to_status ?? "—"}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          {formatDate(r.order_date)}
-                        </span>
-                      </div>
-                      {r.comment && (
-                        <p className="mt-1 text-muted-foreground">{r.comment}</p>
-                      )}
-                      {r.reversed_by && (
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          By {r.reversed_by}
-                        </p>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </CardContent>
-            </Card>
-          )}
 
           <UpdateStatusDialog
-            open={statusDialogOpen}
-            onOpenChange={setStatusDialogOpen}
-            waybillId={order.waybill_id}
+            open={statusOpen}
+            onOpenChange={setStatusOpen}
             orderId={id}
+            currentStatusKey={order.current_status.key}
           />
+          <AssignRiderDialog open={riderOpen} onOpenChange={setRiderOpen} orderId={id} />
         </>
       )}
     </div>
@@ -310,35 +196,33 @@ function Detail({
 function UpdateStatusDialog({
   open,
   onOpenChange,
-  waybillId,
   orderId,
+  currentStatusKey,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  waybillId: string;
   orderId: number | string;
+  currentStatusKey: string;
 }) {
-  const { data: statusTypes, isLoading: statusesLoading } = useAdminPrimaryStatusTypes();
-  const { data: sortingLayers } = useAdminSortingLayers();
-  const [statusKey, setStatusKey] = useState("");
-  const [sortingLayerId, setSortingLayerId] = useState(NONE);
+  const { data: catalogue, isLoading, isError } = useAdminStatusCatalogue();
+  const [toStatus, setToStatus] = useState("");
+  const [reason, setReason] = useState("");
   const mutation = useUpdateAdminOrderStatus(orderId);
 
   const submit = () => {
-    if (!statusKey) return;
+    if (!toStatus) return;
     mutation.mutate(
-      {
-        waybill_id: waybillId,
-        status_key: statusKey,
-        ...(sortingLayerId !== NONE ? { sorting_layer_id: Number(sortingLayerId) } : {}),
-      },
+      { to_status: toStatus, reason: reason.trim() || null },
       {
         onSuccess: () => {
           toast.success("Status updated");
           onOpenChange(false);
-          setStatusKey("");
-          setSortingLayerId(NONE);
+          setToStatus("");
+          setReason("");
         },
+        // The backend validates the transition against its edge graph, so an
+        // illegal move comes back as a 4xx with a reason. Showing that beats
+        // duplicating the graph here and drifting from it.
         onError: (error) =>
           toast.error(getErrorMessage(error, "Could not update status")),
       }
@@ -349,57 +233,125 @@ function UpdateStatusDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Update order status</DialogTitle>
+          <DialogTitle>Move order status</DialogTitle>
+          <DialogDescription>
+            The API rejects transitions its state machine does not allow, and will
+            say why.
+          </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-3">
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">
-              New status
-            </label>
-            <Select value={statusKey} onValueChange={setStatusKey}>
-              <SelectTrigger className="w-full">
-                <SelectValue
-                  placeholder={statusesLoading ? "Loading…" : "Select a status"}
-                />
-              </SelectTrigger>
-              <SelectContent>
-                {statusTypes?.map((s) => (
-                  <SelectItem key={s.key} value={s.key}>
-                    {s.value}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+        {isError ? (
+          <p className="py-4 text-sm text-destructive">
+            The status catalogue is not readable with a staff token on this API, so
+            there is no list to choose from. See docs/API-GAPS.md.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">
+                New status
+              </label>
+              <Select value={toStatus} onValueChange={setToStatus}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder={isLoading ? "Loading…" : "Select a status"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {catalogue
+                    ?.filter((s) => s.key !== currentStatusKey)
+                    .map((s) => (
+                      <SelectItem key={s.key} value={s.key}>
+                        {s.name}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">
-              Sorting center (optional)
-            </label>
-            <Select value={sortingLayerId} onValueChange={setSortingLayerId}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Not applicable" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={NONE}>Not applicable</SelectItem>
-                {sortingLayers?.map((s) => (
-                  <SelectItem key={s.key} value={s.key}>
-                    {s.value}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">
+                Reason (optional)
+              </label>
+              <Textarea
+                rows={2}
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder="Recorded on the status history entry"
+              />
+            </div>
           </div>
-        </div>
+        )}
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button disabled={!statusKey || mutation.isPending} onClick={submit}>
-            {mutation.isPending && <Loader2 className="size-4 animate-spin" />}
-            Update
+          <Button disabled={!toStatus || mutation.isPending} onClick={submit}>
+            Update status
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function AssignRiderDialog({
+  open,
+  onOpenChange,
+  orderId,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  orderId: number | string;
+}) {
+  const { data: riders, isLoading } = useRiders();
+  const [riderId, setRiderId] = useState("");
+  const mutation = useAssignRiderToOrder();
+
+  const submit = () => {
+    if (!riderId) return;
+    mutation.mutate(
+      { orderId, riderId: Number(riderId) },
+      {
+        onSuccess: () => {
+          toast.success("Rider assigned");
+          onOpenChange(false);
+          setRiderId("");
+        },
+        onError: (error) =>
+          toast.error(getErrorMessage(error, "Could not assign the rider")),
+      }
+    );
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Assign a rider</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-muted-foreground">Rider</label>
+          <Select value={riderId} onValueChange={setRiderId}>
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder={isLoading ? "Loading…" : "Select a rider"} />
+            </SelectTrigger>
+            <SelectContent>
+              {riders
+                ?.filter((r) => r.is_active)
+                .map((r) => (
+                  <SelectItem key={r.id} value={String(r.id)}>
+                    {r.name}
+                  </SelectItem>
+                ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button disabled={!riderId || mutation.isPending} onClick={submit}>
+            Assign
           </Button>
         </DialogFooter>
       </DialogContent>

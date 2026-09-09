@@ -52,27 +52,55 @@ alternative was leaving a button that always errored.
 | Password-expiry warning at login | No expiry claim in the token | A claim, if the policy is ever real |
 | Client-side permission checks | The API exposes roles, not permissions. `hasPermission()` returns true and lets the API's 403 decide | A permissions claim on `/me` |
 
-## Not ported: the admin area
+## Admin area: ported and not
 
-24 modules under `lib/api/admin-*.ts` still target Laravel URLs and fail fast
-via the interceptor guard. Sorting them by whether the backend could support
-them today:
+**Ported and working against the API** (verified end to end — see
+`scripts/e2e-admin-portal.mjs`):
 
-**Has a backend, needs the module rewritten** — branches, cities, zones and
-post offices (`/geo/*`), riders and rider assignment (`/fleet/*`), orders and
-pickup requests (`/shipments/*`), branch and rider deposits, client invoices,
-COD remittances (`/finance/*`), bags and sorting buckets (`/warehouse/*`),
-reports and status counts (`/analytics/*`), notification settings
-(`/notifications/*`).
+| Screen | Endpoints |
+|---|---|
+| Operations dashboard | `/analytics/dashboard/status-counts` |
+| Packages list + detail | `/shipments/orders*`, incl. status transitions |
+| Assign rider (order and pickup) | `/fleet/orders/{id}/assign-rider`, `/shipments/pickup-requests/{id}/assign-rider` |
+| Pickup operations | `/shipments/pickup-requests*` |
+| Drivers | `/fleet/riders*` (read-only) |
+| Notification settings | `/notifications/settings*` |
 
-**No backend at all** — manifests, mile operations, HO operations, order
-clearing, client notifications, roles and permissions CRUD, reason types,
-waybill inventory, bespoke reports, staff CRUD, client CRUD, barcode/label
-printing, tax types, expense types, client profile-change approvals.
+API modules also exist for `/geo` (zones, cities, branches, post offices),
+`/warehouse` (bags, sorting buckets) and `/finance` (branch and rider deposits,
+approve/reject) — `lib/api/admin-geo.ts`, `admin-warehouse.ts`,
+`admin-finance.ts`. Their screens are not rewired yet, so those pages still
+fail loudly via the interceptor guard.
 
-The second list is the real scoping question: those are Laravel features with
-no counterpart, and each needs a decision about whether it is still wanted
-before anyone writes the endpoint.
+**Removed from ported screens, because the endpoint does not exist:**
+
+| Removed | Why |
+|---|---|
+| Create order as staff | `POST /shipments/orders` needs a `client_id` and nothing lists clients, so the form could not be filled in honestly. `/admin/packages/new` explains this instead of 404ing |
+| Create / edit a driver | A rider is a Staff row; there is no staff CRUD endpoint |
+| Order remarks, reversal history | No such data on this API. Per-transition `reason` is in the status timeline |
+| KPI panel, regional overview | No KPI snapshot and no multi-branch rollup endpoint |
+| Cancel / fail / receive pickup buttons | Replaced by one status control — the API takes a target status and validates it, so three buttons were three chances to disagree with the server |
+
+**Known rough edges in what is ported:**
+
+- The order status control reads the catalogue from `/client-portal/order-statuses`,
+  which is client-authenticated, so it 403s for staff. The dialog says so
+  rather than offering invented statuses. A staff-readable catalogue endpoint
+  would fix it.
+- Pickup target statuses are a local list for the same reason. The backend
+  still validates them, so the worst case is an option that errors.
+- Driver search filters in the browser because `/fleet/riders` is unpaged and
+  has no search. Fine at this size, not at a few hundred riders.
+- `/shipments/pickup-requests` has no limit/offset, so that list is unpaged.
+- The staff order list filters by client **ID**, not name — there is no client
+  lookup to resolve a name into one.
+
+**No backend at all** — these screens still fail loudly and need a
+keep-or-drop decision before anyone writes endpoints: clients, client users,
+profile requests, announcements, manifests, mile operations, HO operations,
+order clearing, roles and permissions, reason types, staff, waybill inventory,
+bespoke reports, barcode/label printing, tax types, expense types.
 
 ## Also missing for the customer area
 

@@ -1,83 +1,56 @@
-import { api, pickKey, unwrap, unwrapPaginated } from "@/lib/api/client";
-import type { ApiResponse, Paginated } from "@/types/api";
-import type {
-  AdminOrderFullDetail,
-  AdminOrderRow,
-  AdminOrdersListParams,
-  CreateAdminOrderManualWaybillPayload,
-  CreateAdminOrderPayload,
-  CreateOrderRemarkPayload,
-  UpdateOrderStatusPayload,
-} from "@/types/admin-order";
+import { api, get, queryParams, range, toPage } from "@/lib/api/client";
+import type { Page } from "@/types/api";
+import type { ClientOrder, OrderHistoryEntry } from "@/types/order";
+import type { AdminOrdersListParams, OrderStatusTransition } from "@/types/admin-order";
 
-/** GET /api/v1/orders/list — paginated, staff-wide order list (auth:staff, view-orders). */
-export async function listAdminOrders(
-  params: AdminOrdersListParams
-): Promise<Paginated<AdminOrderRow>> {
-  const res = await api.get<ApiResponse<AdminOrderRow[]>>("/v1/orders/list", {
-    params: serializeParams(params),
+/** GET /shipments/orders — every client's orders, optionally filtered. */
+export async function listOrders(
+  params: AdminOrdersListParams = {}
+): Promise<Page<ClientOrder>> {
+  const paging = range(params);
+  const items = await get<ClientOrder[]>("/shipments/orders", {
+    params: queryParams({
+      client_id: params.client_id,
+      status_key: params.status_key,
+      ...paging,
+    }),
   });
-  return unwrapPaginated<AdminOrderRow>(res);
+  return toPage(items, paging);
+}
+
+/** GET /shipments/orders/{id} */
+export async function getOrder(orderId: number | string): Promise<ClientOrder> {
+  return get<ClientOrder>(`/shipments/orders/${orderId}`);
+}
+
+/** GET /shipments/orders/by-waybill/{waybill} — the staff waybill lookup. */
+export async function getOrderByWaybill(waybillId: string): Promise<ClientOrder> {
+  return get<ClientOrder>(
+    `/shipments/orders/by-waybill/${encodeURIComponent(waybillId)}`
+  );
+}
+
+/** GET /shipments/orders/{id}/history */
+export async function getOrderHistory(
+  orderId: number | string
+): Promise<OrderHistoryEntry[]> {
+  return get<OrderHistoryEntry[]>(`/shipments/orders/${orderId}/history`);
 }
 
 /**
- * GET /api/v1/orders/{order} — full order detail (order_details, order_remarks,
- * tracking_history, reversal_history). `order` is the numeric orders.id.
+ * POST /shipments/orders/{id}/status — move an order through the state machine.
+ *
+ * The backend validates the transition against its edge graph and rejects an
+ * illegal one, so the UI does not need to replicate that graph; surface the
+ * 4xx instead. Duplicating the rules here is how the two drift apart.
  */
-export async function getAdminOrder(id: number | string): Promise<AdminOrderFullDetail> {
-  const res = await api.get<ApiResponse<unknown>>(`/v1/orders/${id}`);
-  const data = unwrap(res);
-  const detailRows = pickKey<Record<string, unknown>[]>(data, "order_details") ?? [];
-  return {
-    order_details:
-      (detailRows[0] as unknown as AdminOrderFullDetail["order_details"]) ?? null,
-    order_remarks: pickKey(data, "order_remarks") ?? [],
-    tracking_history: pickKey(data, "tracking_history") ?? [],
-    reversal_history: pickKey(data, "reversal_history") ?? [],
-  };
-}
-
-/** POST /api/v1/orders/create-auto-waybill — create a single order, backend-assigned waybill. */
-export async function createAdminOrder(payload: CreateAdminOrderPayload): Promise<void> {
-  await api.post("/v1/orders/create-auto-waybill", payload);
-}
-
-/**
- * POST /api/v1/orders/create — create a single order with a manually supplied
- * waybill number (SingleOrderManualWaybillDTO). Requires the `create-orders`
- * permission, same as the auto-waybill variant.
- */
-export async function createAdminOrderManualWaybill(
-  payload: CreateAdminOrderManualWaybillPayload
-): Promise<void> {
-  await api.post("/v1/orders/create", payload);
-}
-
-/** POST /api/v1/orders/status-update — advance/change an order's status. */
-export async function updateAdminOrderStatus(
-  payload: UpdateOrderStatusPayload
-): Promise<void> {
-  await api.post("/v1/orders/status-update", payload);
-}
-
-/** POST /api/v1/orders/order-remarks/create — attach an internal remark to an order. */
-export async function createAdminOrderRemark(
-  payload: CreateOrderRemarkPayload
-): Promise<void> {
-  await api.post("/v1/orders/order-remarks/create", payload);
-}
-
-/** PUT /api/v1/orders/hold/{order} — toggle hold status on an order. */
-export async function holdAdminOrder(id: number | string): Promise<void> {
-  await api.put(`/v1/orders/hold/${id}`);
-}
-
-function serializeParams(params: AdminOrdersListParams): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(params)) {
-    if (value === undefined || value === null || value === "") continue;
-    if (Array.isArray(value) && value.length === 0) continue;
-    out[key] = value;
-  }
-  return out;
+export async function transitionOrderStatus(
+  orderId: number | string,
+  payload: OrderStatusTransition
+): Promise<ClientOrder> {
+  const { data } = await api.post<ClientOrder>(
+    `/shipments/orders/${orderId}/status`,
+    payload
+  );
+  return data;
 }

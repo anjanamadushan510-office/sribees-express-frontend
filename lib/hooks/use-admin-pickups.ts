@@ -1,29 +1,16 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  keepPreviousData,
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
-import {
-  assignPickupRider,
-  cancelAdminPickup,
-  failAdminPickup,
-  listAdminPickups,
-  receivePickupAtBranch,
+  assignRiderToPickup,
+  listPickupRequests,
+  setPickupStatus,
 } from "@/lib/api/admin-pickups";
 import { getRidersDropdown } from "@/lib/api/dropdowns";
-import type {
-  AdminPickupListParams,
-  AssignRiderPayload,
-  CancelOrFailPickupPayload,
-  PickupRequestIdsPayload,
-} from "@/types/admin-pickup";
+import type { AdminPickupListParams } from "@/types/admin-pickup";
 
-export function useAdminPickups(params: AdminPickupListParams) {
+export function useAdminPickups(params: AdminPickupListParams = {}) {
   return useQuery({
     queryKey: ["admin-pickups", params],
-    queryFn: () => listAdminPickups(params),
-    placeholderData: keepPreviousData,
+    queryFn: () => listPickupRequests(params),
   });
 }
 
@@ -38,31 +25,24 @@ export function useRidersDropdown() {
 export function useAssignPickupRider() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: AssignRiderPayload) => assignPickupRider(payload),
+    mutationFn: ({ pickupId, riderId }: { pickupId: number; riderId: number }) =>
+      assignRiderToPickup(pickupId, riderId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-pickups"] }),
   });
 }
 
-export function useReceivePickupAtBranch() {
+/**
+ * One status mutation instead of the old cancel/fail/receive trio.
+ *
+ * The backend takes a target status and validates it, so three near-identical
+ * frontend functions were three chances to disagree with the server about
+ * which transitions exist.
+ */
+export function useSetPickupStatus() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: PickupRequestIdsPayload) => receivePickupAtBranch(payload),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-pickups"] }),
-  });
-}
-
-export function useCancelAdminPickup() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (payload: CancelOrFailPickupPayload) => cancelAdminPickup(payload),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-pickups"] }),
-  });
-}
-
-export function useFailAdminPickup() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (payload: CancelOrFailPickupPayload) => failAdminPickup(payload),
+    mutationFn: ({ pickupId, status }: { pickupId: number; status: string }) =>
+      setPickupStatus(pickupId, status),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-pickups"] }),
   });
 }

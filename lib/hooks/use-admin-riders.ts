@@ -1,24 +1,21 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  keepPreviousData,
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
-import {
-  createRider,
+  assignRiderToOrder,
   getRider,
+  getRiderLocation,
   listRiders,
-  toggleRiderStatus,
-  updateRider,
 } from "@/lib/api/admin-riders";
-import type { RiderListParams, SaveRiderPayload } from "@/types/admin-rider";
 
-export function useRiders(params: RiderListParams) {
-  return useQuery({
-    queryKey: ["admin-riders", params],
-    queryFn: () => listRiders(params),
-    placeholderData: keepPreviousData,
-  });
+/**
+ * Riders are read-only here.
+ *
+ * A rider is a Staff row with the rider role, and this API exposes no staff
+ * CRUD — creating or editing one is not something the frontend can do yet.
+ * See docs/API-GAPS.md; the create/edit dialog is gone rather than wired to a
+ * button that always fails.
+ */
+export function useRiders() {
+  return useQuery({ queryKey: ["admin-riders"], queryFn: listRiders });
 }
 
 export function useRider(id: number | string | null) {
@@ -29,30 +26,24 @@ export function useRider(id: number | string | null) {
   });
 }
 
-export function useCreateRider() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (payload: SaveRiderPayload) => createRider(payload),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-riders"] }),
+/** Last known GPS ping. Null (not an error) when the rider has never sent one. */
+export function useRiderLocation(id: number | string | null) {
+  return useQuery({
+    queryKey: ["admin-rider-location", String(id)],
+    queryFn: () => getRiderLocation(id as number | string),
+    enabled: id !== null,
+    refetchInterval: 30_000,
   });
 }
 
-export function useUpdateRider(id: number | string) {
+export function useAssignRiderToOrder() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: SaveRiderPayload) => updateRider(id, payload),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin-riders"] });
-      queryClient.invalidateQueries({ queryKey: ["admin-rider", String(id)] });
+    mutationFn: ({ orderId, riderId }: { orderId: number | string; riderId: number }) =>
+      assignRiderToOrder(orderId, riderId),
+    onSuccess: (_order, { orderId }) => {
+      queryClient.invalidateQueries({ queryKey: ["admin-orders"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-order", String(orderId)] });
     },
-  });
-}
-
-export function useToggleRiderStatus() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, isActive }: { id: number | string; isActive: boolean }) =>
-      toggleRiderStatus(id, isActive),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-riders"] }),
   });
 }

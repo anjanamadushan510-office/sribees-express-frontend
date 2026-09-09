@@ -1,54 +1,30 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  getNotificationDetail,
   listNotificationSettings,
-  toggleNotificationStatus,
-  updateNotification,
-  type NotificationChannel,
+  updateNotificationSetting,
 } from "@/lib/api/admin-notifications";
-import type { NotificationListParams, UpdateNotificationPayload } from "@/types/admin-notification";
+import type { NotificationSettingUpdate } from "@/types/admin-notification";
 
-export function useNotificationSettings(
-  channel: NotificationChannel,
-  params: NotificationListParams
-) {
+/**
+ * The notification template catalogue.
+ *
+ * One flat list, not a per-channel one: the backend returns every setting with
+ * its `channel` field, so filtering by channel is a client-side concern and
+ * splitting it into separate queries would just fetch the same rows twice.
+ */
+export function useNotificationSettings() {
   return useQuery({
-    queryKey: ["admin-notifications", channel, params],
-    queryFn: () => listNotificationSettings(channel, params),
-    placeholderData: keepPreviousData,
+    queryKey: ["admin-notifications"],
+    queryFn: listNotificationSettings,
   });
 }
 
-export function useToggleNotificationStatus(channel: NotificationChannel) {
+export function useUpdateNotificationSetting() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, isActive }: { id: number | string; isActive: boolean }) =>
-      toggleNotificationStatus(channel, id, isActive),
+    mutationFn: ({ id, payload }: { id: number; payload: NotificationSettingUpdate }) =>
+      updateNotificationSetting(id, payload),
     onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["admin-notifications", channel] }),
-  });
-}
-
-export function useNotificationDetail(
-  channel: "sms" | "ereceipt",
-  id: number | string | null
-) {
-  return useQuery({
-    queryKey: ["admin-notification-detail", channel, String(id)],
-    queryFn: () => getNotificationDetail(channel, id as number | string),
-    enabled: id !== null,
-  });
-}
-
-export function useUpdateNotification(channel: "sms" | "ereceipt", id: number | string) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (payload: UpdateNotificationPayload) => updateNotification(channel, id, payload),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin-notifications", channel] });
-      queryClient.invalidateQueries({
-        queryKey: ["admin-notification-detail", channel, String(id)],
-      });
-    },
+      queryClient.invalidateQueries({ queryKey: ["admin-notifications"] }),
   });
 }

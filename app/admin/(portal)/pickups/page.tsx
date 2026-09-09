@@ -1,28 +1,23 @@
 "use client";
 
 import { useState } from "react";
-import { MoreHorizontal, Search, RotateCcw, Loader2 } from "lucide-react";
+import { MoreHorizontal, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
-import { useAuth } from "@/providers/auth-provider";
 import {
   useAdminPickups,
   useAssignPickupRider,
-  useCancelAdminPickup,
-  useFailAdminPickup,
-  useReceivePickupAtBranch,
-  useRidersDropdown,
+  useSetPickupStatus,
 } from "@/lib/hooks/use-admin-pickups";
-import type { AdminPickupRow } from "@/types/admin-pickup";
+import { useRiders } from "@/lib/hooks/use-admin-riders";
+import type { PickupRequest } from "@/types/pickup";
 import { getErrorMessage } from "@/lib/api/client";
 import { formatDate } from "@/lib/format";
 import { PageHeader } from "@/components/shared/page-header";
 import { DataTable, type Column } from "@/components/shared/data-table";
-import { Pagination } from "@/components/shared/pagination";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { Textarea } from "@/components/ui/textarea";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,6 +27,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -44,247 +40,194 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-const PER_PAGE = 15;
+/**
+ * Target statuses offered for a pickup request.
+ *
+ * There is no pickup status catalogue endpoint (unlike orders), so this list
+ * is local. The backend still validates what it accepts and rejects the rest,
+ * so the worst case is an option that errors — not a silently wrong write.
+ * Listed in docs/API-GAPS.md.
+ */
+const PICKUP_STATUSES = [
+  { value: "assigned", label: "Assigned" },
+  { value: "collected", label: "Collected" },
+  { value: "received_at_branch", label: "Received at branch" },
+  { value: "cancelled", label: "Cancelled" },
+  { value: "failed", label: "Failed" },
+] as const;
 
 export default function AdminPickupsPage() {
-  const { hasPermission } = useAuth();
-  const [page, setPage] = useState(1);
-  const [draft, setDraft] = useState({ client_name: "", pickup_branch: "", rider_name: "" });
-  const [filters, setFilters] = useState<{
-    client_name?: string;
-    pickup_branch?: string;
-    rider_name?: string;
-  }>({});
+  const [clientId, setClientId] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [assignTarget, setAssignTarget] = useState<PickupRequest | null>(null);
+  const [statusTarget, setStatusTarget] = useState<PickupRequest | null>(null);
 
-  const { data, isFetching, isError } = useAdminPickups({
-    page,
-    perPage: PER_PAGE,
-    ...filters,
+  const { data: rows, isFetching, isError } = useAdminPickups({
+    client_id: clientId.trim() ? Number(clientId) : undefined,
+    status_filter: statusFilter.trim() || undefined,
   });
 
-  const [assignTarget, setAssignTarget] = useState<AdminPickupRow | null>(null);
-  const [reasonTarget, setReasonTarget] = useState<{
-    row: AdminPickupRow;
-    action: "cancel" | "fail";
-  } | null>(null);
-  const receiveMutation = useReceivePickupAtBranch();
-
-  const applyFilters = () => {
-    setPage(1);
-    setFilters({
-      client_name: draft.client_name.trim() || undefined,
-      pickup_branch: draft.pickup_branch.trim() || undefined,
-      rider_name: draft.rider_name.trim() || undefined,
-    });
-  };
-  const resetFilters = () => {
-    setDraft({ client_name: "", pickup_branch: "", rider_name: "" });
-    setFilters({});
-    setPage(1);
-  };
-
-  const canChangeStatus = hasPermission("pickup-status-change");
-
-  const columns: Column<AdminPickupRow>[] = [
-    { header: "Pickup ID", cell: (r) => <span className="font-medium">{r.pickup_id}</span> },
-    { header: "Client", cell: (r) => r.name },
-    { header: "Branch", cell: (r) => r.pickup_branch ?? "—" },
-    { header: "Vehicle", cell: (r) => r.type_name ?? "—" },
-    { header: "Rider", cell: (r) => r.rider ?? "Unassigned" },
-    { header: "Orders", className: "text-right", cell: (r) => r.order_count },
-    { header: "Status", cell: (r) => <StatusBadge status={r.status} /> },
+  const columns: Column<PickupRequest>[] = [
+    { header: "Request", cell: (r) => <span className="font-medium">#{r.id}</span> },
+    { header: "Client", cell: (r) => `#${r.client_id}` },
+    {
+      header: "Address",
+      cell: (r) => <span className="line-clamp-2 text-sm">{r.pickup_address}</span>,
+    },
+    { header: "Contact", cell: (r) => r.contact_phone },
     {
       header: "Requested",
-      cell: (r) => (
-        <span className="text-sm text-muted-foreground">
-          {formatDate(r.requested_date)}
-        </span>
-      ),
+      cell: (r) => <span className="text-sm">{formatDate(r.requested_date)}</span>,
     },
     {
+      header: "Rider",
+      cell: (r) => (r.assigned_rider_id ? `#${r.assigned_rider_id}` : "Unassigned"),
+    },
+    { header: "Status", cell: (r) => <StatusBadge status={r.status} /> },
+    {
       header: "",
-      className: "text-right",
-      cell: (r) =>
-        canChangeStatus ? (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <MoreHorizontal className="size-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-              <DropdownMenuItem onClick={() => setAssignTarget(r)}>
-                Assign rider
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                disabled={receiveMutation.isPending}
-                onClick={() =>
-                  receiveMutation.mutate(
-                    { request_ids: [r.id] },
-                    {
-                      onSuccess: () => toast.success("Marked as received at branch"),
-                      onError: (error) =>
-                        toast.error(getErrorMessage(error, "Could not update pickup")),
-                    }
-                  )
-                }
-              >
-                Mark received at branch
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setReasonTarget({ row: r, action: "fail" })}>
-                Mark as failed
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                variant="destructive"
-                onClick={() => setReasonTarget({ row: r, action: "cancel" })}
-              >
-                Cancel pickup
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        ) : null,
+      cell: (r) => (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="sm" onClick={(e) => e.stopPropagation()}>
+              <MoreHorizontal className="size-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => setAssignTarget(r)}>
+              Assign rider
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setStatusTarget(r)}>
+              Change status
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ),
     },
   ];
 
   return (
     <>
-      <PageHeader
-        title="Pickup Requests"
-        description="Merchant pickup requests across all branches."
-      />
+      {/*
+        One "Change status" action replaces the old cancel / fail / receive
+        trio: the API takes a target status and validates it, so three separate
+        buttons were three chances to disagree with the server about which
+        transitions exist. This endpoint is also unpaged — it returns the whole
+        filtered set — so there is no pager below.
+      */}
+      <PageHeader title="Pickup Operations" description="Client pickup requests." />
 
       <Card className="mb-4">
         <CardContent className="flex flex-col gap-3 pt-6 sm:flex-row sm:flex-wrap sm:items-end">
-          <div className="min-w-[10rem] flex-1 space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">Client</label>
+          <div className="w-full space-y-1 sm:w-40">
+            <label className="text-xs font-medium text-muted-foreground">Client ID</label>
             <Input
-              placeholder="Client name"
-              value={draft.client_name}
-              onChange={(e) => setDraft((d) => ({ ...d, client_name: e.target.value }))}
-              onKeyDown={(e) => e.key === "Enter" && applyFilters()}
+              inputMode="numeric"
+              placeholder="e.g. 1"
+              value={clientId}
+              onChange={(e) => setClientId(e.target.value.replace(/\D/g, ""))}
             />
           </div>
-          <div className="min-w-[10rem] flex-1 space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">Branch</label>
+          <div className="flex-1 space-y-1">
+            <label className="text-xs font-medium text-muted-foreground">
+              Status filter (comma-separated)
+            </label>
             <Input
-              placeholder="Pickup branch"
-              value={draft.pickup_branch}
-              onChange={(e) => setDraft((d) => ({ ...d, pickup_branch: e.target.value }))}
-              onKeyDown={(e) => e.key === "Enter" && applyFilters()}
+              placeholder="requested, assigned"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
             />
           </div>
-          <div className="min-w-[10rem] flex-1 space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">Rider</label>
-            <Input
-              placeholder="Rider name"
-              value={draft.rider_name}
-              onChange={(e) => setDraft((d) => ({ ...d, rider_name: e.target.value }))}
-              onKeyDown={(e) => e.key === "Enter" && applyFilters()}
-            />
-          </div>
-          <div className="flex gap-2">
-            <Button onClick={applyFilters}>
-              <Search className="size-4" />
-              Search
-            </Button>
-            <Button variant="outline" onClick={resetFilters}>
-              <RotateCcw className="size-4" />
-              Reset
-            </Button>
-          </div>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setClientId("");
+              setStatusFilter("");
+            }}
+            disabled={!clientId && !statusFilter}
+          >
+            <RotateCcw className="size-4" />
+            Reset
+          </Button>
         </CardContent>
       </Card>
 
       {isError ? (
         <Card>
           <CardContent className="py-10 text-center text-sm text-muted-foreground">
-            Couldn&apos;t load pickup requests right now. Check your connection and try
-            again.
+            Couldn&apos;t load pickup requests right now.
           </CardContent>
         </Card>
       ) : (
-        <>
-          <DataTable
-            columns={columns}
-            rows={data?.items}
-            isLoading={isFetching && !data}
-            rowKey={(r) => r.id}
-            emptyMessage="No pickup requests found."
-          />
-          <Pagination
-            pagination={data?.pagination}
-            onPageChange={setPage}
-            isLoading={isFetching}
-          />
-        </>
+        <DataTable
+          columns={columns}
+          rows={rows}
+          isLoading={isFetching && !rows}
+          rowKey={(r) => r.id}
+          emptyMessage="No pickup requests match these filters."
+        />
       )}
 
-      <AssignRiderDialog
-        pickup={assignTarget}
-        onOpenChange={(open) => !open && setAssignTarget(null)}
-      />
-      <ReasonDialog
-        target={reasonTarget}
-        onOpenChange={(open) => !open && setReasonTarget(null)}
-      />
+      <AssignRiderDialog target={assignTarget} onClose={() => setAssignTarget(null)} />
+      <ChangeStatusDialog target={statusTarget} onClose={() => setStatusTarget(null)} />
     </>
   );
 }
 
 function AssignRiderDialog({
-  pickup,
-  onOpenChange,
+  target,
+  onClose,
 }: {
-  pickup: AdminPickupRow | null;
-  onOpenChange: (open: boolean) => void;
+  target: PickupRequest | null;
+  onClose: () => void;
 }) {
-  const { data: riders, isLoading } = useRidersDropdown();
+  const { data: riders, isLoading } = useRiders();
   const [riderId, setRiderId] = useState("");
   const mutation = useAssignPickupRider();
 
   const submit = () => {
-    if (!pickup || !riderId) return;
+    if (!target || !riderId) return;
     mutation.mutate(
-      { request_ids: [pickup.id], staff_id: Number(riderId) },
+      { pickupId: target.id, riderId: Number(riderId) },
       {
         onSuccess: () => {
           toast.success("Rider assigned");
           setRiderId("");
-          onOpenChange(false);
+          onClose();
         },
-        onError: (error) => toast.error(getErrorMessage(error, "Could not assign rider")),
+        onError: (e) => toast.error(getErrorMessage(e, "Could not assign the rider")),
       }
     );
   };
 
   return (
-    <Dialog open={!!pickup} onOpenChange={onOpenChange}>
+    <Dialog open={target !== null} onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Assign rider — {pickup?.pickup_id}</DialogTitle>
+          <DialogTitle>Assign a rider</DialogTitle>
+          <DialogDescription>
+            Pickup request #{target?.id} — {target?.pickup_address}
+          </DialogDescription>
         </DialogHeader>
         <Select value={riderId} onValueChange={setRiderId}>
           <SelectTrigger className="w-full">
             <SelectValue placeholder={isLoading ? "Loading…" : "Select a rider"} />
           </SelectTrigger>
           <SelectContent>
-            {riders?.map((r) => (
-              <SelectItem key={r.key} value={r.key}>
-                {r.value}
-              </SelectItem>
-            ))}
+            {riders
+              ?.filter((r) => r.is_active)
+              .map((r) => (
+                <SelectItem key={r.id} value={String(r.id)}>
+                  {r.name}
+                </SelectItem>
+              ))}
           </SelectContent>
         </Select>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
           <Button disabled={!riderId || mutation.isPending} onClick={submit}>
-            {mutation.isPending && <Loader2 className="size-4 animate-spin" />}
             Assign
           </Button>
         </DialogFooter>
@@ -293,58 +236,58 @@ function AssignRiderDialog({
   );
 }
 
-function ReasonDialog({
+function ChangeStatusDialog({
   target,
-  onOpenChange,
+  onClose,
 }: {
-  target: { row: AdminPickupRow; action: "cancel" | "fail" } | null;
-  onOpenChange: (open: boolean) => void;
+  target: PickupRequest | null;
+  onClose: () => void;
 }) {
-  const [reason, setReason] = useState("");
-  const cancelMutation = useCancelAdminPickup();
-  const failMutation = useFailAdminPickup();
-  const mutation = target?.action === "cancel" ? cancelMutation : failMutation;
+  const [status, setStatus] = useState("");
+  const mutation = useSetPickupStatus();
 
   const submit = () => {
-    if (!target || !reason.trim()) return;
+    if (!target || !status) return;
     mutation.mutate(
-      { request_ids: [target.row.id], reason: reason.trim() },
+      { pickupId: target.id, status },
       {
         onSuccess: () => {
-          toast.success(target.action === "cancel" ? "Pickup cancelled" : "Pickup marked failed");
-          setReason("");
-          onOpenChange(false);
+          toast.success("Status updated");
+          setStatus("");
+          onClose();
         },
-        onError: (error) => toast.error(getErrorMessage(error, "Could not update pickup")),
+        onError: (e) => toast.error(getErrorMessage(e, "Could not update the status")),
       }
     );
   };
 
   return (
-    <Dialog open={!!target} onOpenChange={onOpenChange}>
+    <Dialog open={target !== null} onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>
-            {target?.action === "cancel" ? "Cancel" : "Fail"} pickup — {target?.row.pickup_id}
-          </DialogTitle>
+          <DialogTitle>Change pickup status</DialogTitle>
+          <DialogDescription>
+            Pickup request #{target?.id} — currently {target?.status}
+          </DialogDescription>
         </DialogHeader>
-        <Textarea
-          placeholder="Reason…"
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-          rows={3}
-        />
+        <Select value={status} onValueChange={setStatus}>
+          <SelectTrigger className="w-full">
+            <SelectValue placeholder="Select a status" />
+          </SelectTrigger>
+          <SelectContent>
+            {PICKUP_STATUSES.filter((s) => s.value !== target?.status).map((s) => (
+              <SelectItem key={s.value} value={s.value}>
+                {s.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Close
+          <Button variant="outline" onClick={onClose}>
+            Cancel
           </Button>
-          <Button
-            variant="destructive"
-            disabled={!reason.trim() || mutation.isPending}
-            onClick={submit}
-          >
-            {mutation.isPending && <Loader2 className="size-4 animate-spin" />}
-            Confirm
+          <Button disabled={!status || mutation.isPending} onClick={submit}>
+            Update
           </Button>
         </DialogFooter>
       </DialogContent>

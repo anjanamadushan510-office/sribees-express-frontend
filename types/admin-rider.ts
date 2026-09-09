@@ -1,48 +1,16 @@
-/** A row from GET /api/v1/riders/list (RiderListAction). */
-export interface RiderRow {
-  id: number;
-  rider_name: string;
-  contract_type: "staff" | "freelance";
-  branch_name: string;
-  created_by: string | null;
-  deactivated_by: string | null;
-  deactivated_date: string | null;
-  status: "new" | "active" | "deactivated" | string;
-}
-
-export interface RiderListParams {
-  page?: number;
-  perPage?: number;
-  orderBy?: "id" | "name" | "created_at";
-  orderByDirection?: "asc" | "desc";
-  status?: string[];
-  rider_name?: string;
-  branch_name?: string;
-}
-
-/** GET /api/v1/riders/{staff} → data.rider. */
-export interface RiderDetail {
+/** `RiderOut` — a Staff row carrying the rider role. */
+export interface Rider {
   id: number;
   name: string;
-  nic: string;
-  address: string;
   email: string;
-  contact_no: string;
-  contract_type: "staff" | "freelance";
-  created_at: string;
-  updated_at: string;
-  branch: { branch_id: number; name: string }[];
+  phone: string | null;
+  is_active: boolean;
 }
 
-/** Payload for POST /api/v1/riders/create and PUT /api/v1/riders/update/{staff}. */
-export interface SaveRiderPayload {
-  name: string;
-  nic: string;
-  address: string;
-  contact_no: string;
-  branch_id: number;
-  contract_type: "staff" | "freelance";
-  email: string;
-  password?: string;
-  password_confirmation?: string;
+/** GET /fleet/riders/{id}/location — the rider's most recent ping. */
+export interface RiderLocation {
+  rider_id: number;
+  latitude: number;
+  longitude: number;
+  recorded_at: string;
 }
