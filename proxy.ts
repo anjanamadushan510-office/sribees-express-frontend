@@ -5,8 +5,9 @@ import type { NextRequest } from "next/server";
  * Route protection (Next.js 16 `proxy` convention — formerly `middleware`).
  *
  * Auth state is mirrored into cookies at login (sx_token, sx_guard) so it is
- * visible server-side here. The Passport bearer token itself is still enforced
- * by the Laravel API; this layer only handles UX redirects.
+ * visible server-side here. This layer only handles UX redirects — the cookie
+ * is never trusted as authorization. The bearer token is enforced by the API
+ * on every request, so a forged cookie buys a redirect, not access.
  */
 
 const CUSTOMER_PREFIXES = [

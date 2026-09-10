@@ -1,8 +1,9 @@
 /**
  * End-to-end smoke test of the customer portal against a REAL backend.
  *
- * Unlike scripts/qa-sweep.mjs, this forges nothing: it signs in through the
- * actual login form with real credentials and drives the real screens, so it
+ * This forges nothing — no seeded localStorage session, no fake token: it signs
+ * in through the actual login form with real credentials and drives the real
+ * screens, so it
  * exercises the token flow, the API contract and the rendering together. That
  * combination is what catches the bugs contract-checking alone misses — a
  * status key that exists but is not the one the UI hard-coded, for instance.

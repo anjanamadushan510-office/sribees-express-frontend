@@ -1,25 +1,69 @@
 # SRIBEES Express — Frontend Build Log
 
-Working doc for the overnight full-frontend build. **Read this file first** before doing
-anything else — it has the plan, what's done, and what's next. Keep it updated as you go
-(check off items, add notes) so work is resumable if this session ends mid-task.
+## Current state — read this, not the archive below
 
-Owner is asleep until ~09:00 the next morning. Do not ask questions — make the reasonable
-call, note the assumption here, and keep moving. Do not `git commit` (owner reviews and
-commits themselves). Do not touch the backend DB/migrations (see "Backend" section below).
+This is a **Next.js customer + admin portal talking to the FastAPI backend**
+(`sribees-express-backend`), which serves `https://devapiexpress.sribees.com/api/v1`.
+
+- **Auth:** JWT access + refresh, rotating refresh tokens, one shared refresh
+  promise (`lib/api/client.ts`, `lib/auth/session.ts`). Guards are `staff` and
+  `client`.
+- **There is no response envelope.** FastAPI returns the resource itself. The
+  `unwrap()` / `pickKey()` helpers in `lib/api/client.ts` are deprecated
+  leftovers from the previous backend — do not use them in new code.
+- **What works and what does not:** [`docs/API-GAPS.md`](docs/API-GAPS.md) is the
+  authoritative ledger. Read it before assuming an endpoint exists. Of the ~205
+  paths this frontend originally called, one existed on the new backend;
+  everything ported since is listed there.
+- **The real gate is the e2e scripts**, not typecheck and lint —
+  `scripts/e2e-customer-portal.mjs` and `scripts/e2e-admin-portal.mjs` log in
+  through the real form against the deployed API and exit non-zero on any failed
+  check or console error. Every bug in the 2026-09-09 pass was found by those and
+  by nothing else.
 
 ## Brand (done — don't redo)
 
-- Name is **"SRIBEES Express"** (exact casing) everywhere in the UI — already applied
-  across `app/`, `components/`, `README.md`.
-- Colors sampled from the logo (deep raspberry/magenta pink) — already applied in
-  `app/globals.css`: `--primary: #c41c5c`, `--brand-from: #d6296b`, `--brand-to: #9e1149`,
-  `--accent: #fce4ed` / `--accent-foreground: #8e0f45` (dark mode variants also set).
-  Reuse these tokens (`text-primary`, `bg-gradient-to-r from-brand-from to-brand-to`, etc.)
-  — don't invent new brand colors or reintroduce the old orange/"TransExpress" scheme.
-- If you find the actual logo asset (owner may drop it in `public/`), you can fine-tune the
-  hex to match exactly — otherwise the current values are a deliberate close estimate, good
-  enough to ship.
+- The name is **"SRIBEES Express"** (exact casing) everywhere in the UI.
+- Colours are sampled from the logo (deep raspberry/magenta pink) and already
+  applied in `app/globals.css`: `--primary: #c41c5c`, `--brand-from: #d6296b`,
+  `--brand-to: #9e1149`, `--accent: #fce4ed` / `--accent-foreground: #8e0f45`
+  (dark-mode variants also set). Reuse those tokens (`text-primary`,
+  `bg-gradient-to-r from-brand-from to-brand-to`) rather than inventing new ones.
+
+## Architecture
+
+- URL space: customer portal under `(customer)/*`, staff/admin under
+  `admin/(portal)/*`. The sidebar is driven by `lib/nav.ts`
+  (`customerNavSections` / `adminNavSections`), and
+  `components/layout/portal-shell.tsx` is the shared shell — don't duplicate it.
+- `lib/api/unavailable.ts` throws `FeatureUnavailableError` for endpoints the
+  backend does not implement. **Never** substitute empty data: "you have no
+  invoices" is a false statement about someone's account, where an error is a
+  true one.
+- A request-interceptor guard in `lib/api/client.ts` rejects any path starting
+  `/v1/` or `/admin/` before it leaves the browser. Those are legacy URLs from
+  the previous backend and could only ever 404.
+- Seeding local form state from a fetched resource: use the **guard-then-mount**
+  pattern (parent returns early on `isLoading`/`isError`/`!data`, then renders a
+  `key={id}`-ed child whose `useState` is lazily initialised from `data`). Not
+  `useEffect` + `setState`, which trips the React Compiler's `set-state-in-effect`
+  rule.
+
+---
+
+# ▼ ARCHIVE — legacy build log (pre-2026-09-09)
+
+**Everything below this line describes the previous Laravel/MySQL backend and
+this frontend as it was written against it.** That backend is not part of this
+repository and no longer runs. The response envelope, Passport guards,
+`/api/v1/*` route inventory, demo accounts, priority lists and backlog below are
+all obsolete; they are kept as the record of how the app got here, and because
+the endpoint inventory is the best surviving description of the modules that
+still have no counterpart on the current backend.
+
+**Do not follow any instruction below this line.** For current architecture read
+the section above; for what the backend can actually serve read
+`docs/API-GAPS.md`.
 
 ## Live backend now available (added 2026-08-18, later session)
 
@@ -27,7 +71,7 @@ The owner is awake and asked to run this locally end-to-end, so the constraints 
 changed for future sessions — re-read before assuming "no backend" still applies:
 
 - WSL2 (`Ubuntu-22.04`) has its own MySQL 8 + Redis already installed and running, holding the
-  **real `transexpress` dev database** (matches `backend/.env` credentials exactly — this is
+  **real legacy dev database** (matched `backend/.env` credentials exactly — this was
   the team's actual dev DB, fully migrated except one pending migration, not a throwaway
   seed DB — treat it with the same care as before, still no unprompted migrations).
 - Backend is running via `php artisan serve --host=0.0.0.0 --port=8000` **inside WSL**
@@ -67,7 +111,7 @@ changed for future sessions — re-read before assuming "no backend" still appli
 ## Backend (do not touch)
 
 - Local MySQL (`MySQL80` Windows service) is **stopped** and cannot be started without admin
-  rights from this shell. `DB_DATABASE=transexpress` in `backend/.env`.
+  rights from this shell. The database name was set by `DB_DATABASE` in `backend/.env`.
 - `backend/app/Console/Commands/MigrateCommand.php` wraps `migrate` with a **mandatory
   interactive double-confirm** ("inform Kasun before proceeding") — this is a deliberate
   safety gate on a real team's DB, not a throwaway sandbox. **Do not bypass it** (no calling
@@ -791,7 +835,7 @@ this list is for scope/prioritization, not a full field spec.
 
 - **Session 5 (this one) — owner asked to "finish the frontend completely, cover all
   endpoints," i.e. work through the entire deferred-backlog list above, not just a subset.**
-  A live backend is now available (WSL `artisan serve` + real `transexpress` DB, see "Live
+  A live backend is now available (WSL `artisan serve` + the real legacy DB, see "Live
   backend now available" section) with two demo accounts (`qa-demo@sribeesexpress.local` /
   staff, `qa-demo-client@sribeesexpress.local` / client). Confirmed both backend
   (`curl localhost:8000/api/v1/dropdown/cities` → 200) and frontend (port 3000, production
