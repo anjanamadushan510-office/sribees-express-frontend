@@ -96,11 +96,45 @@ fail loudly via the interceptor guard.
 - The staff order list filters by client **ID**, not name — there is no client
   lookup to resolve a name into one.
 
-**No backend at all** — these screens still fail loudly and need a
-keep-or-drop decision before anyone writes endpoints: clients, client users,
-profile requests, announcements, manifests, mile operations, HO operations,
-order clearing, roles and permissions, reason types, staff, waybill inventory,
-bespoke reports, barcode/label printing, tax types, expense types.
+**Newly available, not yet wired up (backend shipped 2026-09-10).** These were
+the four the business cannot operate without, and they now have endpoints:
+
+| Screen | Endpoints |
+|---|---|
+| Staff / riders | `GET,POST /identity/staff`, `GET,PATCH /identity/staff/{id}`, `POST /identity/staff/{id}/password` |
+| Clients (merchants) | `GET,POST /identity/clients`, `GET,PATCH /identity/clients/{id}` |
+| Client users | `GET,POST /identity/clients/{id}/users`, `PATCH /identity/client-users/{id}`, `POST /identity/client-users/{id}/password` |
+| Roles & permissions | `GET /identity/permissions`, `GET,POST /identity/roles`, `GET,PATCH,DELETE /identity/roles/{id}` |
+| Barcode / label printing | `POST /shipments/labels` — batch of up to 500 order ids, returns label data; draw the barcode client-side from `waybill_id` |
+
+Three consequences for this frontend:
+
+- **`/admin/packages/new` can work now.** It was blocked because
+  `POST /shipments/orders` needs a `client_id` and nothing listed clients.
+- **Rider create/edit can come back** on `/admin/drivers`. A rider is a staff
+  member holding the "Delivery Rider" role; `GET /identity/staff?role_name=Delivery+Rider`
+  is the roster, and unlike `/fleet/riders` it is paged and searchable server-side.
+- **`hasPermission()` can stop returning `true`.** The API exposes roles today,
+  not permissions, so the honest interim remains "let the API's 403 decide" — but
+  the 403s are now real. A permissions claim on `/me` would let the UI hide what
+  it cannot do rather than offering it and failing.
+
+**Decided: dropped.** Waybill inventory/requests (digital waybills make
+pre-printed number blocks obsolete), the ~30 bespoke reports (replaced by a few
+real reports plus CSV export), and announcements (email and WhatsApp do this
+today). Delete these screens rather than leaving them failing.
+
+**Decided: fold into existing screens rather than build.** "Order clearing" is
+the rider-deposit ledger that `/finance` already has; "mile operations" is this
+app's own parcels list with a multi-status filter and a bulk status action; "HO
+operations" is finance plus `order_status_history`. Add the filter and the bulk
+action to `/admin/packages` and delete those three modules.
+
+**Still no backend, in build order:** manifests, profile requests, reason types.
+Tax types and expense types are configuration tables, not modules.
+
+Full reasoning for each of the above is in the backend's
+`docs/SCALE_ROADMAP.md` §6.
 
 ## Also missing for the customer area
 
@@ -118,7 +152,14 @@ rather than rendering fabricated content.
 
 ## Operational note
 
-`/public/track/{waybill_id}` is unauthenticated and has no rate limiting in
-front of it, so waybill enumeration is possible. It exposes no personal data by
-design, but it does expose parcel volume. Tracked in the backend's
-`docs/DEPLOYMENT.md` §7 alongside the other edge gaps.
+`/public/track/{waybill_id}` is unauthenticated and waybills are sequential, so
+enumeration is possible. It exposes no personal data by design, but it does
+expose parcel volume. **It is now rate limited to 60 requests a minute per IP**
+(backend, 2026-09-10), which bounds the harvest without fixing the underlying
+guessability — a non-sequential waybill scheme is the actual fix and is
+researched in the backend's `docs/SCALE_ROADMAP.md` §7.
+
+Login is rate limited too: 30 attempts a minute per IP, and five *failed*
+attempts per fifteen minutes per email address. A client hitting either gets a
+429 with `Retry-After`, which the UI should surface as "too many attempts, try
+again in N seconds" rather than as a generic error.
