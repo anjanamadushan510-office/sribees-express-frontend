@@ -96,33 +96,54 @@ fail loudly via the interceptor guard.
 - The staff order list filters by client **ID**, not name — there is no client
   lookup to resolve a name into one.
 
-**Newly available, not yet wired up (backend shipped 2026-09-10).** These were
-the four the business cannot operate without, and they now have endpoints:
+**Ported 2026-09-11 — administration no longer needs a shell on the server.**
+Before this, creating a merchant or issuing them an API key meant running a
+seeder over SSH, which is not a process anyone can hand to an administrator.
 
 | Screen | Endpoints |
 |---|---|
-| Staff / riders | `GET,POST /identity/staff`, `GET,PATCH /identity/staff/{id}`, `POST /identity/staff/{id}/password` |
-| Clients (merchants) | `GET,POST /identity/clients`, `GET,PATCH /identity/clients/{id}` |
-| Client users | `GET,POST /identity/clients/{id}/users`, `PATCH /identity/client-users/{id}`, `POST /identity/client-users/{id}/password` |
-| Roles & permissions | `GET /identity/permissions`, `GET,POST /identity/roles`, `GET,PATCH,DELETE /identity/roles/{id}` |
-| Barcode / label printing | `POST /shipments/labels` — batch of up to 500 order ids, returns label data; draw the barcode client-side from `waybill_id` |
+| Merchants (`/admin/clients`) | `GET,POST /identity/clients`, `GET,PATCH /identity/clients/{id}` |
+| — portal logins tab | `GET,POST /identity/clients/{id}/users`, `PATCH /identity/client-users/{id}`, `POST /identity/client-users/{id}/password` |
+| — API keys tab | `GET,POST /identity/clients/{id}/api-keys`, `POST /identity/api-keys/{id}/revoke` |
+| Staff & riders (`/admin/staff`) | `GET,POST /identity/staff`, `GET,PATCH /identity/staff/{id}`, `POST /identity/staff/{id}/password` |
+| Roles & permissions (`/admin/roles`) | `GET /identity/permissions`, `GET,POST /identity/roles`, `GET,PATCH,DELETE /identity/roles/{id}` |
+| Post offices (`/admin/locations`) | `GET /geo/post-offices` (paged), `GET /geo/post-offices/regions`, `POST /geo/post-offices/assign-city` |
 
-Three consequences for this frontend:
+Three things about these worth knowing before changing them:
 
-- **`/admin/packages/new` can work now.** It was blocked because
-  `POST /shipments/orders` needs a `client_id` and nothing listed clients.
-- **Rider create/edit can come back** on `/admin/drivers`. A rider is a staff
-  member holding the "Delivery Rider" role; `GET /identity/staff?role_name=Delivery+Rider`
-  is the roster, and unlike `/fleet/riders` it is paged and searchable server-side.
-- **`hasPermission()` can stop returning `true`.** The API exposes roles today,
-  not permissions, so the honest interim remains "let the API's 403 decide" — but
-  the 403s are now real. A permissions claim on `/me` would let the UI hide what
-  it cannot do rather than offering it and failing.
+- **An API key is shown once.** The create response carries the only copy; the
+  server stores a hash. There is no "show key" endpoint to add later, so the
+  reveal dialog says so and offers a copy button. Revoking deactivates rather
+  than deletes — the row is what attributes past calls to an integration.
+- **The post office screen leads with per-district coverage, not a list.** The
+  directory holds 2,111 rows, all seeded unassigned, and a merchant address only
+  resolves once its post office is attached to a delivery city. Assignment is
+  therefore by district, in one call.
+- **Merchant logins lost their own screen.** They are a tab on the merchant now,
+  because `/identity/clients/{id}/users` is the only way the API lists them and
+  "who can sign in for this business" is not a question asked globally.
 
-**Decided: dropped.** Waybill inventory/requests (digital waybills make
-pre-printed number blocks obsolete), the ~30 bespoke reports (replaced by a few
-real reports plus CSV export), and announcements (email and WhatsApp do this
-today). Delete these screens rather than leaving them failing.
+Still open:
+
+- **`/admin/packages/new` can work now** and is not yet rewired. It was blocked
+  because `POST /shipments/orders` needs a `client_id` and nothing listed
+  clients; `/admin/clients` does.
+- **Rider create/edit now lives on `/admin/staff`**, not `/admin/drivers` — a
+  rider is a staff member holding the "Delivery Rider" role, and
+  `GET /identity/staff?role_name=Delivery+Rider` is the roster. `/admin/drivers`
+  stays the read-only operational view rather than growing a second way to
+  create people.
+- **`hasPermission()` still returns `true`.** The API exposes roles on the
+  token, not permissions, so the honest interim remains "let the API's 403
+  decide" — but the 403s are now real. A permissions claim on `/me` would let
+  the UI hide what it cannot do rather than offering it and failing.
+
+**Decided: dropped — and now actually deleted (2026-09-11).** Waybill
+inventory/requests (digital waybills make pre-printed number blocks obsolete),
+announcements (email and WhatsApp do this today), client profile requests, and
+the standalone client-users screen. Their routes and nav entries are gone rather
+than left failing. The ~30 bespoke reports are still pending the same treatment,
+to be replaced by a few real reports plus CSV export.
 
 **Decided: fold into existing screens rather than build.** "Order clearing" is
 the rider-deposit ledger that `/finance` already has; "mile operations" is this

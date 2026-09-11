@@ -64,3 +64,41 @@ export interface PostOfficeCreate {
   province?: string | null;
   city_id?: number | null;
 }
+
+/**
+ * Unlike zones, cities and branches, this list is paged and carries a total:
+ * the directory is the national one, seeded with 2,111 rows.
+ */
+export interface PostOfficePage {
+  items: PostOffice[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface PostOfficeListParams {
+  search?: string;
+  district?: string;
+  province?: string;
+  city_id?: number;
+  /** `false` is the one that matters: what is left to route. */
+  assigned?: boolean;
+  limit?: number;
+  offset?: number;
+}
+
+/** How much of a district is routable, which is the only measure of progress. */
+export interface PostOfficeRegion {
+  province: string;
+  district: string;
+  total: number;
+  assigned: number;
+}
+
+/** `city_id: null` detaches. Name a region or list ids, never both. */
+export interface PostOfficeAssign {
+  city_id: number | null;
+  district?: string;
+  province?: string;
+  post_office_ids?: number[];
+}

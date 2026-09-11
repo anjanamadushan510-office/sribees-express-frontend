@@ -15,7 +15,6 @@ import {
   Briefcase,
   UserCog,
   ShieldCheck,
-  Barcode,
   MapPin,
   Wallet,
   Landmark,
@@ -27,9 +26,6 @@ import {
   Building,
   Navigation,
   FileSignature,
-  UserCircle,
-  Megaphone,
-  ScrollText,
 } from "lucide-react";
 
 export interface NavItem {
@@ -95,14 +91,10 @@ export const adminNavSections: NavSection[] = [
   {
     title: "Network",
     items: [
-      { label: "Clients", href: "/admin/clients", icon: Briefcase },
-      { label: "Client Users", href: "/admin/clients/users", icon: UserCircle },
-      {
-        label: "Profile Requests",
-        href: "/admin/clients/profile-requests",
-        icon: ScrollText,
-      },
-      { label: "Announcements", href: "/admin/clients/announcements", icon: Megaphone },
+      // Merchant logins used to be their own screen. They are now a tab on the
+      // merchant, which is the only place the API can list them from and the
+      // only place the question "who can sign in for this business" is asked.
+      { label: "Merchants", href: "/admin/clients", icon: Briefcase },
       { label: "Branches", href: "/admin/branches", icon: Building2 },
       { label: "Locations", href: "/admin/locations", icon: MapPin },
       { label: "Reports", href: "/admin/reports", icon: BarChart3 },
@@ -111,9 +103,8 @@ export const adminNavSections: NavSection[] = [
   {
     title: "Team",
     items: [
-      { label: "Staff", href: "/admin/staff", icon: UserCog },
+      { label: "Staff & Riders", href: "/admin/staff", icon: UserCog },
       { label: "Roles", href: "/admin/roles", icon: ShieldCheck },
-      { label: "Waybill Requests", href: "/admin/waybills", icon: Barcode },
     ],
   },
   {

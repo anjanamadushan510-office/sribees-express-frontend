@@ -143,8 +143,135 @@ try {
   const notifRows = await page.locator("tbody tr").count();
   record("notification settings render", notifRows > 0, `${notifRows} row(s)`);
 
-  // --- unported screens must fail visibly ------------------------------------
-  for (const route of ["/admin/clients", "/admin/manifests", "/admin/roles"]) {
+  // --- staff & riders --------------------------------------------------------
+  await page.goto(`${BASE_URL}/admin/staff`, { waitUntil: "domcontentloaded" });
+  await settle(page);
+  await shot(page, "08-staff");
+  const staffRows = await page.locator("tbody tr").count();
+  record("staff list renders rows", staffRows > 0, `${staffRows} row(s)`);
+  record(
+    "staff list shows the roles each person holds",
+    /Super Admin|Delivery Rider/.test(await page.locator("tbody").innerText())
+  );
+
+  // --- roles & permissions ---------------------------------------------------
+  await page.goto(`${BASE_URL}/admin/roles`, { waitUntil: "domcontentloaded" });
+  await settle(page);
+  await shot(page, "09-roles");
+  const rolesText = await page.locator("body").innerText();
+  record("roles list renders both seeded roles", /Super Admin/.test(rolesText) && /Delivery Rider/.test(rolesText));
+  record(
+    "Super Admin is described as satisfying everything, not as holding 0 permissions",
+    /Everything, by name/i.test(rolesText)
+  );
+
+  // --- post offices ----------------------------------------------------------
+  await page.goto(`${BASE_URL}/admin/locations`, { waitUntil: "domcontentloaded" });
+  await settle(page, 4000);
+  await shot(page, "10-post-offices");
+  const geoText = await page.locator("body").innerText();
+  // The seed migration lands 2,111 rows; anything far below that means it did
+  // not run, and every merchant address would resolve to post_office_not_found.
+  const coverage = geoText.match(/of ([\d,]+) post\s*offices/i);
+  const seeded = coverage ? Number(coverage[1].replace(/,/g, "")) : 0;
+  record("post office directory is seeded", seeded >= 2000, `${seeded} in directory`);
+  record(
+    "coverage is broken down by district",
+    /Jaffna|Kalutara|Kurunegala/.test(geoText)
+  );
+  const poRows = await page.locator("tbody tr").count();
+  record("post office list renders a page of rows", poRows > 0, `${poRows} row(s)`);
+
+  // --- merchants: the onboarding flow that hands out an API key --------------
+  await page.goto(`${BASE_URL}/admin/clients`, { waitUntil: "domcontentloaded" });
+  await settle(page);
+  await shot(page, "11-merchants");
+  record(
+    "merchants list renders",
+    /Merchants/i.test(await page.locator("body").innerText())
+  );
+
+  const MERCHANT_EMAIL = "e2e-merchant@sribees.dev";
+  await page.fill('input[placeholder*="Business name" i]', MERCHANT_EMAIL);
+  await page.keyboard.press("Enter");
+  await settle(page, 2000);
+  let merchantRows = await page.locator("tbody tr").count();
+
+  if (merchantRows === 0) {
+    // First run against this database: create the merchant and its first login
+    // in one form, exactly as an administrator onboarding a real one would.
+    await page.click('button:has-text("New merchant")');
+    await page.waitForSelector("#business_name", { timeout: 10_000 });
+    await page.fill("#business_name", "E2E Test Merchant");
+    await page.fill("#email", MERCHANT_EMAIL);
+    await page.fill("#commission_percent", "5.00");
+    await page.fill("#admin_name", "E2E Contact");
+    await page.fill("#admin_email", "e2e-merchant-login@sribees.dev");
+    await page.fill("#admin_password", "Test@1234");
+    await page.click('button:has-text("Create merchant")');
+    await page.waitForURL(/\/admin\/clients\/\d+/, { timeout: 20_000 });
+    record("creating a merchant lands on its detail page", true, page.url());
+  } else {
+    await page.locator("tbody tr").first().click();
+    await page.waitForURL(/\/admin\/clients\/\d+/, { timeout: 20_000 });
+    record("opening an existing merchant works", true, page.url());
+  }
+  await settle(page);
+  await shot(page, "12-merchant-detail");
+
+  // Portal logins tab
+  await page.click('button[role="tab"]:has-text("Portal logins")');
+  await settle(page, 1500);
+  await shot(page, "13-merchant-logins");
+  const loginRows = await page.locator("tbody tr").count();
+  record("merchant has at least one portal login", loginRows > 0, `${loginRows} login(s)`);
+
+  // API keys tab — issue a sandbox key, check it is shown exactly once, revoke it
+  await page.click('button[role="tab"]:has-text("API keys")');
+  await settle(page, 1500);
+  await page.click('button:has-text("Issue key")');
+  await page.waitForSelector("#rate_limit", { timeout: 10_000 });
+  await page.fill("#rate_limit", "300");
+  // Scoped to the dialog: the card header carries a button with the same label.
+  await page.locator('[role="dialog"] button:has-text("Issue key")').click();
+  await page.waitForSelector("text=Key issued", { timeout: 20_000 });
+  await settle(page, 1000);
+  await shot(page, "14-api-key-issued");
+
+  // Scoped to the dialog: the key table behind it shows a 16-character prefix
+  // that matches the same pattern, and reading the page body would let that
+  // prefix pass as "the key was shown in full".
+  const revealText = await page.locator('[role="dialog"]').innerText();
+  const issuedKey = revealText.match(/sk_(?:test|live)_[A-Za-z0-9_-]+/);
+  record(
+    "the issued key is shown in full, once",
+    Boolean(issuedKey) && issuedKey[0].length > 30,
+    issuedKey ? `${issuedKey[0].length} chars` : "no key on screen"
+  );
+  record(
+    "the dialog warns that the key cannot be retrieved again",
+    /only time the key is shown/i.test(revealText)
+  );
+
+  await page.click('button:has-text("I have saved it")');
+  await settle(page, 1500);
+  const keyTableText = await page.locator("tbody").innerText();
+  record(
+    "the key list shows the prefix and never the secret",
+    /sk_test_/.test(keyTableText) && !(issuedKey && keyTableText.includes(issuedKey[0]))
+  );
+  record("the new key is listed as active", /Active/i.test(keyTableText));
+
+  await page.locator('tbody tr:has-text("Active") button:has-text("Revoke")').first().click();
+  await settle(page, 2000);
+  await shot(page, "15-api-key-revoked");
+  record(
+    "revoking marks the key revoked rather than removing it",
+    /Revoked/i.test(await page.locator("tbody").innerText())
+  );
+
+  // --- screens that still have no backend must fail visibly -----------------
+  for (const route of ["/admin/manifests", "/admin/waybills"]) {
     await page.goto(`${BASE_URL}${route}`, { waitUntil: "domcontentloaded" });
     await settle(page, 2000);
     const text = await page.locator("body").innerText();
@@ -154,7 +281,7 @@ try {
       /No .* found|no results/i.test(text) && !/couldn|error|not available/i.test(text);
     record(`${route} does not fake an empty state`, !looksEmptyButFine);
   }
-  await shot(page, "08-unported-screen");
+  await shot(page, "16-unported-screen");
 } catch (error) {
   record("run completed without throwing", false, String(error).slice(0, 300));
   await shot(page, "99-failure");

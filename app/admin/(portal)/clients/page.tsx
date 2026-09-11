@@ -2,141 +2,149 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Search, RotateCcw } from "lucide-react";
-import { useAdminClients } from "@/lib/hooks/use-admin-clients";
-import type { AdminClientListParams, AdminClientRow } from "@/types/admin-client";
+import { Plus, RotateCcw, Search } from "lucide-react";
+import { useMerchants } from "@/lib/hooks/use-identity";
+import type { Merchant } from "@/types/identity";
 import { PageHeader } from "@/components/shared/page-header";
 import { DataTable, type Column } from "@/components/shared/data-table";
-import { Pagination } from "@/components/shared/pagination";
+import { OffsetPagination } from "@/components/shared/offset-pagination";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { NewMerchantDialog } from "./new-merchant-dialog";
 
-const PER_PAGE = 15;
+const ALL = "__all__";
+const PER_PAGE = 20;
 
-const columns: Column<AdminClientRow>[] = [
+const columns: Column<Merchant>[] = [
   {
-    header: "Client",
+    header: "Merchant",
     cell: (r) => (
       <div>
-        <div className="font-medium">{r.client_name}</div>
-        <div className="text-xs text-muted-foreground">{r.client_number}</div>
+        <div className="font-medium">{r.business_name}</div>
+        <div className="text-xs text-muted-foreground">#{r.id}</div>
       </div>
     ),
+  },
+  { header: "Email", cell: (r) => r.email },
+  {
+    header: "Commission",
+    className: "text-right",
+    cell: (r) => `${r.commission_percent}%`,
   },
   {
-    header: "Contact",
-    cell: (r) => (
-      <div className="text-sm">
-        {r.email ?? "—"}
-        <span className="block text-xs text-muted-foreground">{r.address ?? ""}</span>
-      </div>
-    ),
+    header: "Status",
+    cell: (r) => <StatusBadge status={r.is_active ? "Active" : "Inactive"} />,
   },
-  { header: "Pickup branch", cell: (r) => r.pickup_branch ?? "—" },
-  { header: "Nearest city", cell: (r) => r.nearest_city ?? "—" },
-  { header: "Status", cell: (r) => <StatusBadge status={r.status} /> },
 ];
 
-export default function AdminClientsPage() {
+export default function AdminMerchantsPage() {
   const router = useRouter();
-  const [page, setPage] = useState(1);
-  const [draft, setDraft] = useState({ client_name: "", client_no: "", email: "" });
-  const [filters, setFilters] = useState<AdminClientListParams>({});
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
+  const [activeFilter, setActiveFilter] = useState<string>(ALL);
+  const [offset, setOffset] = useState(0);
+  const [creating, setCreating] = useState(false);
 
-  const { data, isFetching, isError } = useAdminClients({
-    page,
-    perPage: PER_PAGE,
-    ...filters,
+  const { data, isFetching, isError, error } = useMerchants({
+    search: search || undefined,
+    is_active: activeFilter === ALL ? undefined : activeFilter === "active",
+    limit: PER_PAGE,
+    offset,
   });
 
-  const applyFilters = () => {
-    setPage(1);
-    setFilters({
-      client_name: draft.client_name.trim() || undefined,
-      client_no: draft.client_no.trim() || undefined,
-      email: draft.email.trim() || undefined,
-    });
-  };
-  const resetFilters = () => {
-    setDraft({ client_name: "", client_no: "", email: "" });
-    setFilters({});
-    setPage(1);
-  };
+  function applySearch() {
+    setSearch(searchInput.trim());
+    setOffset(0);
+  }
+
+  function reset() {
+    setSearchInput("");
+    setSearch("");
+    setActiveFilter(ALL);
+    setOffset(0);
+  }
 
   return (
     <>
       <PageHeader
-        title="Clients"
-        description="All merchant accounts — status, rate cards, tax, marketing, and API access."
+        title="Merchants"
+        description="Businesses that ship with us. Open one to manage its logins and API keys."
+        action={
+          <Button onClick={() => setCreating(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            New merchant
+          </Button>
+        }
       />
 
       <Card className="mb-4">
-        <CardContent className="flex flex-col gap-3 pt-6 sm:flex-row sm:flex-wrap sm:items-end">
-          <div className="min-w-[10rem] flex-1 space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">Client name</label>
+        <CardContent className="flex flex-col gap-3 pt-6 sm:flex-row sm:items-center">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="Search client…"
-              value={draft.client_name}
-              onChange={(e) => setDraft((d) => ({ ...d, client_name: e.target.value }))}
-              onKeyDown={(e) => e.key === "Enter" && applyFilters()}
+              placeholder="Business name or email"
+              className="pl-9"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && applySearch()}
             />
           </div>
-          <div className="min-w-[10rem] flex-1 space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">Client no.</label>
-            <Input
-              placeholder="Client number"
-              value={draft.client_no}
-              onChange={(e) => setDraft((d) => ({ ...d, client_no: e.target.value }))}
-              onKeyDown={(e) => e.key === "Enter" && applyFilters()}
-            />
-          </div>
-          <div className="min-w-[10rem] flex-1 space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">Email</label>
-            <Input
-              placeholder="Email"
-              value={draft.email}
-              onChange={(e) => setDraft((d) => ({ ...d, email: e.target.value }))}
-              onKeyDown={(e) => e.key === "Enter" && applyFilters()}
-            />
-          </div>
+          <Select
+            value={activeFilter}
+            onValueChange={(v) => {
+              setActiveFilter(v);
+              setOffset(0);
+            }}
+          >
+            <SelectTrigger className="sm:w-44">
+              <SelectValue placeholder="Any status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>Any status</SelectItem>
+              <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="inactive">Inactive</SelectItem>
+            </SelectContent>
+          </Select>
           <div className="flex gap-2">
-            <Button onClick={applyFilters}>
-              <Search className="size-4" />
-              Search
-            </Button>
-            <Button variant="outline" onClick={resetFilters}>
-              <RotateCcw className="size-4" />
+            <Button onClick={applySearch}>Search</Button>
+            <Button variant="outline" onClick={reset}>
+              <RotateCcw className="mr-2 h-4 w-4" />
               Reset
             </Button>
           </div>
         </CardContent>
       </Card>
 
-      {isError ? (
-        <Card>
-          <CardContent className="py-10 text-center text-sm text-muted-foreground">
-            Couldn&apos;t load clients right now. Check your connection and try again.
-          </CardContent>
-        </Card>
-      ) : (
-        <>
-          <DataTable
-            columns={columns}
-            rows={data?.items}
-            isLoading={isFetching && !data}
-            rowKey={(r) => r.client_id}
-            onRowClick={(r) => router.push(`/admin/clients/${r.client_id}`)}
-            emptyMessage="No clients match your filters yet."
-          />
-          <Pagination
-            pagination={data?.pagination}
-            onPageChange={setPage}
-            isLoading={isFetching}
-          />
-        </>
+      {isError && (
+        <p className="mb-4 text-sm text-destructive">
+          {error instanceof Error ? error.message : "Could not load merchants."}
+        </p>
       )}
+
+      <DataTable
+        columns={columns}
+        rows={data?.items}
+        isLoading={isFetching && !data}
+        rowKey={(r) => r.id}
+        onRowClick={(r) => router.push(`/admin/clients/${r.id}`)}
+        emptyMessage="No merchants match these filters."
+      />
+      <OffsetPagination page={data} onOffsetChange={setOffset} isLoading={isFetching} />
+
+      <NewMerchantDialog
+        open={creating}
+        onOpenChange={setCreating}
+        onCreated={(clientId) => router.push(`/admin/clients/${clientId}`)}
+      />
     </>
   );
 }

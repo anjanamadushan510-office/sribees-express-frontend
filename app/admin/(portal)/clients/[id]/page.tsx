@@ -3,209 +3,186 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
-import { useAuth } from "@/providers/auth-provider";
-import { useAdminClientRow, useToggleClientStatus } from "@/lib/hooks/use-admin-clients";
+import { useMerchant, useUpdateMerchant } from "@/lib/hooks/use-identity";
 import { getErrorMessage } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Textarea } from "@/components/ui/textarea";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { ClientSettingsTab } from "@/components/admin/client-settings-tab";
-import { ClientFinanceTab } from "@/components/admin/client-finance-tab";
-import { ClientTaxTab } from "@/components/admin/client-tax-tab";
-import { ClientMarketingTab } from "@/components/admin/client-marketing-tab";
-import { ClientApiTab } from "@/components/admin/client-api-tab";
+import { MerchantLoginsTab } from "@/components/admin/merchant-logins-tab";
+import { MerchantApiKeysTab } from "@/components/admin/merchant-api-keys-tab";
 
-export default function AdminClientDetailPage() {
+export default function AdminMerchantDetailPage() {
   const params = useParams<{ id: string }>();
-  const id = params.id;
-  const clientId = Number(id);
-  const { hasPermission } = useAuth();
-
-  const { data: client, isLoading, isError } = useAdminClientRow(id);
-  const [statusDialogOpen, setStatusDialogOpen] = useState(false);
+  const clientId = Number(params.id);
+  const { data: merchant, isLoading, isError, error } = useMerchant(clientId);
 
   return (
-    <div className="mx-auto max-w-5xl">
-      <Button asChild variant="ghost" size="sm" className="mb-4">
+    <>
+      <Button variant="ghost" size="sm" asChild className="mb-4 -ml-2">
         <Link href="/admin/clients">
-          <ArrowLeft className="size-4" />
-          Back to clients
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          All merchants
         </Link>
       </Button>
 
-      {isLoading ? (
-        <Skeleton className="h-64 w-full" />
-      ) : isError || !client ? (
-        <Card>
-          <CardContent className="py-10 text-center text-sm text-muted-foreground">
-            Couldn&apos;t load this client. It may not exist, or you may not have
-            permission to view it.
-          </CardContent>
-        </Card>
-      ) : (
+      {isLoading && <Skeleton className="h-40 w-full" />}
+
+      {isError && (
+        <p className="text-sm text-destructive">
+          {error instanceof Error ? error.message : "Could not load this merchant."}
+        </p>
+      )}
+
+      {merchant && (
         <>
-          <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">{client.client_name}</h1>
-              <p className="text-sm text-muted-foreground">{client.client_number}</p>
-            </div>
-            <div className="flex items-center gap-2">
-              {client.status && <StatusBadge status={client.status} />}
-              {(hasPermission("activate-client") || hasPermission("deactivate-client")) && (
-                <Button size="sm" variant="outline" onClick={() => setStatusDialogOpen(true)}>
-                  {client.status === "active" ? "Deactivate" : "Activate"}
-                </Button>
-              )}
-            </div>
+          <div className="mb-6 flex flex-wrap items-center gap-3">
+            <h1 className="text-2xl font-bold tracking-tight">
+              {merchant.business_name}
+            </h1>
+            <StatusBadge status={merchant.is_active ? "Active" : "Inactive"} />
           </div>
 
-          <Card className="mb-6">
-            <CardHeader>
-              <CardTitle className="text-base">Overview</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <dl className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
-                <Detail label="Email">{client.email ?? "—"}</Detail>
-                <Detail label="Financial email">{client.financial_email ?? "—"}</Detail>
-                <Detail label="Address">{client.address ?? "—"}</Detail>
-                <Detail label="Pickup branch">{client.pickup_branch ?? "—"}</Detail>
-                <Detail label="Pickup address">{client.pick_address ?? "—"}</Detail>
-                <Detail label="Nearest city">{client.nearest_city ?? "—"}</Detail>
-                <Detail label="Owner">{client.owner_name ?? "—"}</Detail>
-                <Detail label="Owner NIC">{client.owner_nic ?? "—"}</Detail>
-                <Detail label="Advisor">{client.advisor_name ?? "—"}</Detail>
-                <Detail label="Bank">{client.bank_name ?? "—"}</Detail>
-                <Detail label="Account holder">{client.account_holder_name ?? "—"}</Detail>
-                <Detail label="Account number">{client.bank_account_number ?? "—"}</Detail>
-                <Detail label="Business reg. no.">{client.business_reg_no ?? "—"}</Detail>
-                <Detail label="Payment terms">{client.payment_terms ?? "—"}</Detail>
-                {client.remark && (
-                  <Detail label="Status remark" className="sm:col-span-2 lg:col-span-3">
-                    {client.remark}
-                  </Detail>
-                )}
-              </dl>
-            </CardContent>
-          </Card>
-
-          <Tabs defaultValue="settings">
-            <TabsList>
-              <TabsTrigger value="settings">Settings</TabsTrigger>
-              <TabsTrigger value="finance">Finance</TabsTrigger>
-              <TabsTrigger value="tax">Tax</TabsTrigger>
-              <TabsTrigger value="marketing">Marketing</TabsTrigger>
-              <TabsTrigger value="api">API</TabsTrigger>
+          <Tabs defaultValue="details">
+            <TabsList className="mb-4">
+              <TabsTrigger value="details">Details</TabsTrigger>
+              <TabsTrigger value="logins">Portal logins</TabsTrigger>
+              <TabsTrigger value="api-keys">API keys</TabsTrigger>
             </TabsList>
-            <TabsContent value="settings">
-              <ClientSettingsTab clientId={clientId} />
+
+            <TabsContent value="details">
+              <MerchantDetailsForm clientId={clientId} merchant={merchant} />
             </TabsContent>
-            <TabsContent value="finance">
-              <ClientFinanceTab clientId={clientId} />
+            <TabsContent value="logins">
+              <MerchantLoginsTab clientId={clientId} />
             </TabsContent>
-            <TabsContent value="tax">
-              <ClientTaxTab clientId={clientId} />
-            </TabsContent>
-            <TabsContent value="marketing">
-              <ClientMarketingTab clientId={clientId} />
-            </TabsContent>
-            <TabsContent value="api">
-              <ClientApiTab clientId={clientId} />
+            <TabsContent value="api-keys">
+              <MerchantApiKeysTab clientId={clientId} />
             </TabsContent>
           </Tabs>
-
-          <ToggleStatusDialog
-            open={statusDialogOpen}
-            onOpenChange={setStatusDialogOpen}
-            clientId={clientId}
-            isActive={client.status === "active"}
-          />
         </>
       )}
-    </div>
+    </>
   );
 }
 
-function Detail({
-  label,
-  className,
-  children,
-}: {
-  label: string;
-  className?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className={className}>
-      <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        {label}
-      </dt>
-      <dd className="mt-0.5">{children}</dd>
-    </div>
-  );
-}
-
-function ToggleStatusDialog({
-  open,
-  onOpenChange,
+function MerchantDetailsForm({
   clientId,
-  isActive,
+  merchant,
 }: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
   clientId: number;
-  isActive: boolean;
+  merchant: { business_name: string; email: string; commission_percent: string; is_active: boolean };
 }) {
-  const [remark, setRemark] = useState("");
-  const mutation = useToggleClientStatus();
+  const [form, setForm] = useState({
+    business_name: merchant.business_name,
+    email: merchant.email,
+    commission_percent: merchant.commission_percent,
+  });
+  const update = useUpdateMerchant();
 
-  const submit = () => {
-    mutation.mutate(
-      { id: clientId, isActive: !isActive, remark: remark.trim() || undefined },
-      {
-        onSuccess: () => {
-          toast.success(isActive ? "Client deactivated" : "Client activated");
-          setRemark("");
-          onOpenChange(false);
-        },
-        onError: (error) => toast.error(getErrorMessage(error, "Could not update status")),
-      }
-    );
-  };
+  async function save(event: React.FormEvent) {
+    event.preventDefault();
+    try {
+      await update.mutateAsync({ id: clientId, payload: form });
+      toast.success("Merchant updated");
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Could not save"));
+    }
+  }
+
+  async function setActive(isActive: boolean) {
+    try {
+      await update.mutateAsync({ id: clientId, payload: { is_active: isActive } });
+      toast.success(isActive ? "Merchant reactivated" : "Merchant suspended");
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Could not change the status"));
+    }
+  }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{isActive ? "Deactivate" : "Activate"} client</DialogTitle>
-        </DialogHeader>
-        <Textarea
-          placeholder="Remark (optional)…"
-          value={remark}
-          onChange={(e) => setRemark(e.target.value)}
-          rows={3}
-        />
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button disabled={mutation.isPending} onClick={submit}>
-            {mutation.isPending && <Loader2 className="size-4 animate-spin" />}
-            Confirm
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <div className="grid gap-4 lg:grid-cols-3">
+      <Card className="lg:col-span-2">
+        <CardHeader>
+          <CardTitle>Business details</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={save} className="grid gap-4">
+            <div className="grid gap-2">
+              <Label htmlFor="business_name">Business name</Label>
+              <Input
+                id="business_name"
+                value={form.business_name}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, business_name: e.target.value }))
+                }
+              />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-2">
+                <Label htmlFor="email">Business email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={form.email}
+                  onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="commission_percent">Commission %</Label>
+                <Input
+                  id="commission_percent"
+                  inputMode="decimal"
+                  value={form.commission_percent}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, commission_percent: e.target.value }))
+                  }
+                />
+              </div>
+            </div>
+            <div>
+              <Button type="submit" disabled={update.isPending}>
+                {update.isPending ? "Saving…" : "Save changes"}
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Status</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {/*
+            Suspending is not deletion, and it is not cosmetic: the API refuses
+            a suspended merchant's logins at both sign-in and token refresh, so
+            an open session stops working rather than running to expiry. Orders
+            reference this row, so there is no delete to offer.
+          */}
+          <p className="text-sm text-muted-foreground">
+            Suspending blocks this merchant&apos;s portal logins immediately.
+            Their existing parcels are unaffected.
+          </p>
+          {merchant.is_active ? (
+            <Button
+              variant="destructive"
+              onClick={() => setActive(false)}
+              disabled={update.isPending}
+            >
+              Suspend merchant
+            </Button>
+          ) : (
+            <Button onClick={() => setActive(true)} disabled={update.isPending}>
+              Reactivate merchant
+            </Button>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }

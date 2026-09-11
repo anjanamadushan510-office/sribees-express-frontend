@@ -17,18 +17,26 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CityFormDialog } from "@/components/forms/city-form-dialog";
 import { ZoneFormDialog } from "@/components/forms/zone-form-dialog";
+import { PostOfficesTab } from "@/components/admin/post-offices-tab";
 
 const PER_PAGE = 15;
 
 export default function AdminLocationsPage() {
   return (
     <>
-      <PageHeader title="Locations" description="Service cities, districts, and delivery zones." />
-      <Tabs defaultValue="cities">
+      <PageHeader
+        title="Locations"
+        description="Delivery zones price a parcel, cities group post offices, and post offices are the names merchants actually send us."
+      />
+      <Tabs defaultValue="post-offices">
         <TabsList>
+          <TabsTrigger value="post-offices">Post offices</TabsTrigger>
           <TabsTrigger value="cities">Cities</TabsTrigger>
           <TabsTrigger value="zones">Zones</TabsTrigger>
         </TabsList>
+        <TabsContent value="post-offices">
+          <PostOfficesTab />
+        </TabsContent>
         <TabsContent value="cities">
           <CitiesTab />
         </TabsContent>

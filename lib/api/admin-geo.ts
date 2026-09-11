@@ -5,7 +5,11 @@ import type {
   City,
   CityCreate,
   PostOffice,
+  PostOfficeAssign,
   PostOfficeCreate,
+  PostOfficeListParams,
+  PostOfficePage,
+  PostOfficeRegion,
   Zone,
   ZoneCreate,
 } from "@/types/admin-geo";
@@ -71,9 +75,33 @@ export async function updateBranch(
 }
 
 // --- Post offices ------------------------------------------------------------
-/** `search` filters server-side — the only search this API offers anywhere. */
-export const listPostOffices = (search?: string) =>
-  get<PostOffice[]>("/geo/post-offices", { params: queryParams({ search }) });
+
+/**
+ * Paged and filtered server-side. The directory holds every post office in Sri
+ * Lanka, so this is the one `/geo` list that must never be asked for whole.
+ */
+export const listPostOffices = (params: PostOfficeListParams = {}) =>
+  get<PostOfficePage>("/geo/post-offices", {
+    params: queryParams({ ...params, limit: params.limit ?? 50, offset: params.offset ?? 0 }),
+  });
+
+/** Per-district totals, so the screen can show what is left to route. */
+export const listPostOfficeRegions = () =>
+  get<PostOfficeRegion[]>("/geo/post-offices/regions");
+
+/**
+ * Attach or detach a whole district at once. Assigning 2,111 post offices one
+ * at a time is not a workflow anyone would finish.
+ */
+export async function assignPostOfficesToCity(
+  payload: PostOfficeAssign
+): Promise<{ updated: number }> {
+  const { data } = await api.post<{ updated: number }>(
+    "/geo/post-offices/assign-city",
+    payload
+  );
+  return data;
+}
 
 export async function createPostOffice(
   payload: PostOfficeCreate
