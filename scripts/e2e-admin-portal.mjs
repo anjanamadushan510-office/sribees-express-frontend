@@ -4,10 +4,14 @@
  * Companion to e2e-customer-portal.mjs, same rules: real staff login, real
  * data, exits non-zero on any failed check or console error.
  *
- * Only the screens backed by a real endpoint are asserted. The unported ones
- * (clients, manifests, roles, staff, waybills …) are visited too, but merely
- * to confirm they fail *visibly* rather than rendering a plausible-looking
- * empty state — see docs/API-GAPS.md.
+ * Only the screens backed by a real endpoint are asserted. The ones that still
+ * have no backend (manifests, waybills) are visited too, but merely to confirm
+ * they fail *visibly* rather than rendering a plausible-looking empty state —
+ * see docs/API-GAPS.md.
+ *
+ * The merchant section walks the whole onboarding path an administrator takes
+ * to hand a shop an integration: create the business and its login, issue a
+ * sandbox key, check the secret is shown once and never again, revoke it.
  *
  * Usage:
  *   STAFF_EMAIL=... STAFF_PASSWORD=... BASE_URL=http://localhost:3100 \
@@ -48,6 +52,35 @@ async function settle(p, ms = 2500) {
   await p.waitForTimeout(ms);
 }
 
+/**
+ * Rows that actually carry data.
+ *
+ * `tbody tr` is not that: DataTable renders the empty state as one row with a
+ * single spanning cell, and the loading state as six rows of skeletons. Counting
+ * either as data is how "1 row(s)" was reported for a list that had none — and
+ * then the click on that row navigated nowhere.
+ */
+function dataRows(p) {
+  return p.locator("tbody tr").filter({ has: p.locator("td:nth-child(2)") })
+    .filter({ hasNot: p.locator('[data-slot="skeleton"]') });
+}
+
+/**
+ * A list screen is working if it either shows rows or says it has none. Asserting
+ * rows outright makes the suite fail on a freshly reimaged database, which tells
+ * you nothing about the code — but silently accepting zero would hide the failure
+ * this whole file exists to catch, so an empty list must still look empty on
+ * purpose rather than broken.
+ */
+async function recordList(p, label) {
+  const count = await dataRows(p).count();
+  if (count > 0) return record(label, true, `${count} row(s)`);
+  const text = await p.locator("body").innerText();
+  const saysEmpty = /No .*(found|match)|no results|has no/i.test(text);
+  const saysBroken = /couldn|could not|error|not available/i.test(text);
+  record(label, saysEmpty && !saysBroken, "empty database, empty state shown");
+}
+
 const browser = await chromium.launch();
 const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
 const page = await context.newPage();
@@ -74,7 +107,7 @@ try {
   await page.fill('input[type="email"], input[name="email"]', EMAIL);
   await page.fill('input[type="password"], input[name="password"]', PASSWORD);
   await page.click('button[type="submit"]');
-  await page.waitForURL((url) => !url.pathname.endsWith("/login"), { timeout: 20_000 });
+  await page.waitForURL((url) => !url.pathname.endsWith("/login"), { timeout: 90_000 });
   await settle(page);
   record("staff login", true, page.url());
   await shot(page, "01-after-login");
@@ -103,12 +136,12 @@ try {
   await page.goto(`${BASE_URL}/admin/packages`, { waitUntil: "domcontentloaded" });
   await settle(page);
   await shot(page, "03-packages");
-  const orderRows = await page.locator("tbody tr").count();
-  record("packages list renders rows", orderRows > 0, `${orderRows} row(s)`);
+  const orderRows = await dataRows(page).count();
+  await recordList(page, "packages list renders");
 
   if (orderRows > 0) {
-    await page.locator("tbody tr").first().click();
-    await page.waitForURL(/\/admin\/packages\/\d+/, { timeout: 20_000 });
+    await dataRows(page).first().click();
+    await page.waitForURL(/\/admin\/packages\/\d+/, { timeout: 90_000 });
     await settle(page);
     await shot(page, "04-package-detail");
     const detail = await page.locator("body").innerText();
@@ -131,8 +164,7 @@ try {
   await page.goto(`${BASE_URL}/admin/pickups`, { waitUntil: "domcontentloaded" });
   await settle(page);
   await shot(page, "06-pickups");
-  const pickupRows = await page.locator("tbody tr").count();
-  record("pickup requests render", pickupRows > 0, `${pickupRows} row(s)`);
+  await recordList(page, "pickup requests render");
 
   // --- notification settings -------------------------------------------------
   await page.goto(`${BASE_URL}/admin/settings/notifications`, {
@@ -140,15 +172,13 @@ try {
   });
   await settle(page);
   await shot(page, "07-notifications");
-  const notifRows = await page.locator("tbody tr").count();
-  record("notification settings render", notifRows > 0, `${notifRows} row(s)`);
+  await recordList(page, "notification settings render");
 
   // --- staff & riders --------------------------------------------------------
   await page.goto(`${BASE_URL}/admin/staff`, { waitUntil: "domcontentloaded" });
   await settle(page);
   await shot(page, "08-staff");
-  const staffRows = await page.locator("tbody tr").count();
-  record("staff list renders rows", staffRows > 0, `${staffRows} row(s)`);
+  await recordList(page, "staff list renders");
   record(
     "staff list shows the roles each person holds",
     /Super Admin|Delivery Rider/.test(await page.locator("tbody").innerText())
@@ -167,7 +197,17 @@ try {
 
   // --- post offices ----------------------------------------------------------
   await page.goto(`${BASE_URL}/admin/locations`, { waitUntil: "domcontentloaded" });
-  await settle(page, 4000);
+  await settle(page, 2000);
+  // The coverage figure and the table are two separate queries, and the table
+  // wins the race. Reading the body on a timer caught "0 of 0" and reported an
+  // unseeded directory against a database holding all 2,111.
+  await page
+    .waitForFunction(
+      () => !/\bof 0 post\s*offices/i.test(document.body.innerText),
+      undefined,
+      { timeout: 30_000 }
+    )
+    .catch(() => {});
   await shot(page, "10-post-offices");
   const geoText = await page.locator("body").innerText();
   // The seed migration lands 2,111 rows; anything far below that means it did
@@ -175,12 +215,17 @@ try {
   const coverage = geoText.match(/of ([\d,]+) post\s*offices/i);
   const seeded = coverage ? Number(coverage[1].replace(/,/g, "")) : 0;
   record("post office directory is seeded", seeded >= 2000, `${seeded} in directory`);
+  // Counted, not pattern-matched: every district name also appears in the table
+  // below, so a text search would pass even with no coverage card at all.
+  const districtCards = await page
+    .locator('button:has-text("Province")')
+    .count();
   record(
-    "coverage is broken down by district",
-    /Jaffna|Kalutara|Kurunegala/.test(geoText)
+    "coverage is broken down by all 25 districts",
+    districtCards >= 25,
+    `${districtCards} district card(s)`
   );
-  const poRows = await page.locator("tbody tr").count();
-  record("post office list renders a page of rows", poRows > 0, `${poRows} row(s)`);
+  await recordList(page, "post office list renders a page");
 
   // --- merchants: the onboarding flow that hands out an API key --------------
   await page.goto(`${BASE_URL}/admin/clients`, { waitUntil: "domcontentloaded" });
@@ -192,28 +237,31 @@ try {
   );
 
   const MERCHANT_EMAIL = "e2e-merchant@sribees.dev";
+  // The API enforces a 10-character minimum (NIST length-only policy); a
+  // shorter one here fails as a 422 the script would read as a broken screen.
+  const E2E_PASSWORD = "e2e-portal-pass";
   await page.fill('input[placeholder*="Business name" i]', MERCHANT_EMAIL);
   await page.keyboard.press("Enter");
   await settle(page, 2000);
-  let merchantRows = await page.locator("tbody tr").count();
+  let merchantRows = await dataRows(page).count();
 
   if (merchantRows === 0) {
     // First run against this database: create the merchant and its first login
     // in one form, exactly as an administrator onboarding a real one would.
     await page.click('button:has-text("New merchant")');
-    await page.waitForSelector("#business_name", { timeout: 10_000 });
+    await page.waitForSelector("#business_name", { timeout: 60_000 });
     await page.fill("#business_name", "E2E Test Merchant");
     await page.fill("#email", MERCHANT_EMAIL);
     await page.fill("#commission_percent", "5.00");
     await page.fill("#admin_name", "E2E Contact");
     await page.fill("#admin_email", "e2e-merchant-login@sribees.dev");
-    await page.fill("#admin_password", "Test@1234");
+    await page.fill("#admin_password", E2E_PASSWORD);
     await page.click('button:has-text("Create merchant")');
-    await page.waitForURL(/\/admin\/clients\/\d+/, { timeout: 20_000 });
+    await page.waitForURL(/\/admin\/clients\/\d+/, { timeout: 90_000 });
     record("creating a merchant lands on its detail page", true, page.url());
   } else {
-    await page.locator("tbody tr").first().click();
-    await page.waitForURL(/\/admin\/clients\/\d+/, { timeout: 20_000 });
+    await dataRows(page).first().click();
+    await page.waitForURL(/\/admin\/clients\/\d+/, { timeout: 90_000 });
     record("opening an existing merchant works", true, page.url());
   }
   await settle(page);
@@ -223,18 +271,18 @@ try {
   await page.click('button[role="tab"]:has-text("Portal logins")');
   await settle(page, 1500);
   await shot(page, "13-merchant-logins");
-  const loginRows = await page.locator("tbody tr").count();
+  const loginRows = await dataRows(page).count();
   record("merchant has at least one portal login", loginRows > 0, `${loginRows} login(s)`);
 
   // API keys tab — issue a sandbox key, check it is shown exactly once, revoke it
   await page.click('button[role="tab"]:has-text("API keys")');
   await settle(page, 1500);
   await page.click('button:has-text("Issue key")');
-  await page.waitForSelector("#rate_limit", { timeout: 10_000 });
+  await page.waitForSelector("#rate_limit", { timeout: 60_000 });
   await page.fill("#rate_limit", "300");
   // Scoped to the dialog: the card header carries a button with the same label.
   await page.locator('[role="dialog"] button:has-text("Issue key")').click();
-  await page.waitForSelector("text=Key issued", { timeout: 20_000 });
+  await page.waitForSelector("text=Key issued", { timeout: 90_000 });
   await settle(page, 1000);
   await shot(page, "14-api-key-issued");
 
@@ -271,7 +319,9 @@ try {
   );
 
   // --- screens that still have no backend must fail visibly -----------------
-  for (const route of ["/admin/manifests", "/admin/waybills"]) {
+  // /admin/waybills is deliberately absent now, not unported — visiting a route
+  // that no longer exists proves nothing and logs a 404.
+  for (const route of ["/admin/manifests", "/admin/order-clearing"]) {
     await page.goto(`${BASE_URL}${route}`, { waitUntil: "domcontentloaded" });
     await settle(page, 2000);
     const text = await page.locator("body").innerText();

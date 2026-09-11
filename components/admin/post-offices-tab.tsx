@@ -123,8 +123,8 @@ export function PostOfficesTab() {
         <CardHeader>
           <CardTitle>Coverage by district</CardTitle>
           <p className="mt-1 text-sm text-muted-foreground">
-            {totals.assigned.toLocaleString()} of {totals.total.toLocaleString()} post
-            offices are attached to a delivery city. The rest resolve as
+            {totals.assigned.toLocaleString()} of {totals.total.toLocaleString()}{" "}
+            post offices are attached to a delivery city. The rest resolve as
             &ldquo;not yet configured&rdquo; for merchants.
           </p>
         </CardHeader>
