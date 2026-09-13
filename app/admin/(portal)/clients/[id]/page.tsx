@@ -7,6 +7,11 @@ import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { useMerchant, useUpdateMerchant } from "@/lib/hooks/use-identity";
 import { getErrorMessage } from "@/lib/api/client";
+import { searchStaffPostalCities } from "@/lib/api/dropdowns";
+import type { Merchant } from "@/types/identity";
+import { PostalCityPicker, type PostalCityOption } from "@/components/shared/postal-city-picker";
+import { MerchantOutletsTab } from "@/components/admin/merchant-outlets-tab";
+import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -51,12 +56,16 @@ export default function AdminMerchantDetailPage() {
           <Tabs defaultValue="details">
             <TabsList className="mb-4">
               <TabsTrigger value="details">Details</TabsTrigger>
+              <TabsTrigger value="outlets">Outlets</TabsTrigger>
               <TabsTrigger value="logins">Portal logins</TabsTrigger>
               <TabsTrigger value="api-keys">API keys</TabsTrigger>
             </TabsList>
 
             <TabsContent value="details">
               <MerchantDetailsForm clientId={clientId} merchant={merchant} />
+            </TabsContent>
+            <TabsContent value="outlets">
+              <MerchantOutletsTab clientId={clientId} />
             </TabsContent>
             <TabsContent value="logins">
               <MerchantLoginsTab clientId={clientId} />
@@ -76,19 +85,33 @@ function MerchantDetailsForm({
   merchant,
 }: {
   clientId: number;
-  merchant: { business_name: string; email: string; commission_percent: string; is_active: boolean };
+  merchant: Merchant;
 }) {
   const [form, setForm] = useState({
     business_name: merchant.business_name,
     email: merchant.email,
+    address: merchant.address ?? "",
     commission_percent: merchant.commission_percent,
   });
+  const [postalCity, setPostalCity] = useState<PostalCityOption | null>(merchant.postal_city);
   const update = useUpdateMerchant();
 
   async function save(event: React.FormEvent) {
     event.preventDefault();
+    // An address can be changed but never cleared: the API refuses a null, so
+    // an empty field is left out rather than sent.
+    const address = form.address.trim();
     try {
-      await update.mutateAsync({ id: clientId, payload: form });
+      await update.mutateAsync({
+        id: clientId,
+        payload: {
+          business_name: form.business_name,
+          email: form.email,
+          commission_percent: form.commission_percent,
+          ...(address ? { address } : {}),
+          ...(postalCity ? { postal_city_id: postalCity.id } : {}),
+        },
+      });
       toast.success("Merchant updated");
     } catch (error) {
       toast.error(getErrorMessage(error, "Could not save"));
@@ -142,6 +165,32 @@ function MerchantDetailsForm({
                     setForm((f) => ({ ...f, commission_percent: e.target.value }))
                   }
                 />
+              </div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-2">
+                <Label htmlFor="address">Registered address</Label>
+                <Textarea
+                  id="address"
+                  rows={2}
+                  value={form.address}
+                  onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="postal_city">Postal city</Label>
+                <PostalCityPicker
+                  id="postal_city"
+                  queryKey="staff"
+                  search={searchStaffPostalCities}
+                  value={postalCity}
+                  onChange={setPostalCity}
+                />
+                {!merchant.address && (
+                  <p className="text-xs text-muted-foreground">
+                    This merchant predates required addresses — add one.
+                  </p>
+                )}
               </div>
             </div>
             <div>

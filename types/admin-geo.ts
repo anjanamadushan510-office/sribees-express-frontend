@@ -19,86 +19,91 @@ export interface ZoneCreate {
   delivery_weight_margin?: string;
 }
 
-export interface City {
+/**
+ * A Sri Lanka Post office town — the one vocabulary every address is written
+ * in. `zone_id: null` means nobody delivers there yet; the whole national
+ * directory (2,111 rows) is seeded, and delivery is rolled out district by
+ * district by giving rows a zone.
+ */
+export interface PostalCity {
   id: number;
   name: string;
   district: string | null;
+  province: string | null;
   zone_id: number | null;
   is_active: boolean;
 }
 
-export interface CityCreate {
+export interface PostalCityCreate {
   name: string;
   district?: string | null;
+  province?: string | null;
   zone_id?: number | null;
 }
 
+/** The staff list is paged and carries a total — it is the national directory. */
+export interface PostalCityPage {
+  items: PostalCity[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface PostalCityListParams {
+  search?: string;
+  district?: string;
+  province?: string;
+  zone_id?: number;
+  /** Only the cities one branch covers. */
+  branch_id?: number;
+  /** `false` is the one that matters: what is not delivered to yet. */
+  zoned?: boolean;
+  limit?: number;
+  offset?: number;
+}
+
+/** Rollout progress for one district: priced (`zoned`) and covered by a branch. */
+export interface PostalCityRegion {
+  province: string;
+  district: string;
+  total: number;
+  zoned: number;
+  covered: number;
+}
+
+/** Name a region or list ids, never both. */
+interface RegionOrIds {
+  district?: string;
+  province?: string;
+  postal_city_ids?: number[];
+}
+
+/** `zone_id: null` stops delivery to the selection. */
+export interface PostalCityZoneAssign extends RegionOrIds {
+  zone_id: number | null;
+}
+
+/** Additive; `detach: true` removes the selection from the branch instead. */
+export interface PostalCityBranchAssign extends RegionOrIds {
+  branch_id: number;
+  detach?: boolean;
+}
+
+/**
+ * Coverage is a count, not a list: a branch covers hundreds of postal cities.
+ * List them with `listPostalCities({ branch_id })`.
+ */
 export interface Branch {
   id: number;
   name: string;
   address: string | null;
   phone_no: string | null;
   is_active: boolean;
-  cities: City[];
+  postal_city_count: number;
 }
 
 export interface BranchCreate {
   name: string;
   address?: string | null;
   phone_no?: string | null;
-  city_ids?: number[];
-}
-
-export interface PostOffice {
-  id: number;
-  name: string;
-  district: string | null;
-  province: string | null;
-  city_id: number | null;
-  is_active: boolean;
-}
-
-export interface PostOfficeCreate {
-  name: string;
-  district?: string | null;
-  province?: string | null;
-  city_id?: number | null;
-}
-
-/**
- * Unlike zones, cities and branches, this list is paged and carries a total:
- * the directory is the national one, seeded with 2,111 rows.
- */
-export interface PostOfficePage {
-  items: PostOffice[];
-  total: number;
-  limit: number;
-  offset: number;
-}
-
-export interface PostOfficeListParams {
-  search?: string;
-  district?: string;
-  province?: string;
-  city_id?: number;
-  /** `false` is the one that matters: what is left to route. */
-  assigned?: boolean;
-  limit?: number;
-  offset?: number;
-}
-
-/** How much of a district is routable, which is the only measure of progress. */
-export interface PostOfficeRegion {
-  province: string;
-  district: string;
-  total: number;
-  assigned: number;
-}
-
-/** `city_id: null` detaches. Name a region or list ids, never both. */
-export interface PostOfficeAssign {
-  city_id: number | null;
-  district?: string;
-  province?: string;
-  post_office_ids?: number[];
 }

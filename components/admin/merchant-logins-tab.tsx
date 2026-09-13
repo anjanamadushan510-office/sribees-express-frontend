@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import {
   useCreateMerchantLogin,
   useMerchantLogins,
+  useOutlets,
   useSetMerchantLoginPassword,
   useUpdateMerchantLogin,
 } from "@/lib/hooks/use-identity";
@@ -18,6 +19,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -26,9 +34,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
-/** The people at the merchant who sign in to the customer portal. */
+/** A login with no outlet speaks for the whole business. */
+const WHOLE_BUSINESS = "__whole_business__";
+
+/**
+ * The people at the merchant who sign in to the customer portal. A login may
+ * work at one outlet (a shop's counter staff) or at none (the owner, finance).
+ */
 export function MerchantLoginsTab({ clientId }: { clientId: number }) {
   const { data: logins, isFetching, isError, error } = useMerchantLogins(clientId);
+  const { data: outlets } = useOutlets(clientId);
   const [adding, setAdding] = useState(false);
   const [resetting, setResetting] = useState<MerchantLogin | null>(null);
   const update = useUpdateMerchantLogin(clientId);
@@ -45,6 +60,41 @@ export function MerchantLoginsTab({ clientId }: { clientId: number }) {
   const columns: Column<MerchantLogin>[] = [
     { header: "Name", cell: (r) => <span className="font-medium">{r.name}</span> },
     { header: "Email", cell: (r) => r.email },
+    {
+      header: "Outlet",
+      cell: (r) => {
+        const value = r.outlet_id === null ? WHOLE_BUSINESS : String(r.outlet_id);
+        return (
+          <Select
+            value={value}
+            disabled={update.isPending}
+            onValueChange={async (next) => {
+              try {
+                await update.mutateAsync({
+                  id: r.id,
+                  payload: { outlet_id: next === WHOLE_BUSINESS ? null : Number(next) },
+                });
+                toast.success("Outlet changed");
+              } catch (err) {
+                toast.error(getErrorMessage(err, "Could not change the outlet"));
+              }
+            }}
+          >
+            <SelectTrigger className="h-8 w-44">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={WHOLE_BUSINESS}>Whole business</SelectItem>
+              {(outlets ?? []).map((o) => (
+                <SelectItem key={o.id} value={String(o.id)}>
+                  {o.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        );
+      },
+    },
     {
       header: "Status",
       cell: (r) => <StatusBadge status={r.is_active ? "Active" : "Disabled"} />,
@@ -112,15 +162,25 @@ function AddLoginDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const [form, setForm] = useState({ name: "", email: "", password: "" });
+  const empty = { name: "", email: "", password: "", outlet: WHOLE_BUSINESS };
+  const [form, setForm] = useState(empty);
+  const { data: outlets } = useOutlets(clientId);
   const create = useCreateMerchantLogin();
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     try {
-      await create.mutateAsync({ clientId, payload: form });
+      await create.mutateAsync({
+        clientId,
+        payload: {
+          name: form.name,
+          email: form.email,
+          password: form.password,
+          outlet_id: form.outlet === WHOLE_BUSINESS ? null : Number(form.outlet),
+        },
+      });
       toast.success("Login created");
-      setForm({ name: "", email: "", password: "" });
+      setForm(empty);
       onOpenChange(false);
     } catch (error) {
       toast.error(getErrorMessage(error, "Could not create the login"));
@@ -135,6 +195,27 @@ function AddLoginDialog({
             <DialogTitle>Add a portal login</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="login_outlet">Works at</Label>
+              <Select
+                value={form.outlet}
+                onValueChange={(v) => setForm((f) => ({ ...f, outlet: v }))}
+              >
+                <SelectTrigger id="login_outlet">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={WHOLE_BUSINESS}>Whole business</SelectItem>
+                  {(outlets ?? [])
+                    .filter((o) => o.is_active)
+                    .map((o) => (
+                      <SelectItem key={o.id} value={String(o.id)}>
+                        {o.name}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="grid gap-2">
               <Label htmlFor="login_name">Name</Label>
               <Input

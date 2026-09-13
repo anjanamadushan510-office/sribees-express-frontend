@@ -1,5 +1,6 @@
-import { get } from "@/lib/api/client";
+import { get, queryParams } from "@/lib/api/client";
 import { unavailable } from "@/lib/api/unavailable";
+import type { PostalCity, PostalCityPage } from "@/types/admin-geo";
 import type { OrderStatus } from "@/types/order";
 
 /**
@@ -10,14 +11,6 @@ import type { OrderStatus } from "@/types/order";
 export interface KeyValueOption {
   key: string;
   value: string;
-}
-
-interface City {
-  id: number;
-  name: string;
-  district: string | null;
-  zone_id: number | null;
-  is_active: boolean;
 }
 
 interface Branch {
@@ -42,15 +35,23 @@ const toOption = (row: { id: number; name: string }): KeyValueOption => ({
 
 // --- Client-guard dropdowns --------------------------------------------------
 
+/** How many matches a postal city search shows. A search box, not a list. */
+const POSTAL_CITY_SEARCH_LIMIT = 20;
+
 /**
- * GET /client-portal/cities — the cities a customer may address an order to.
+ * GET /client-portal/postal-cities — search for a customer's address.
  *
- * Note this is NOT /geo/cities: that router is staff-only, by design. The
- * client-portal projection returns active cities only.
+ * Not /geo/postal-cities: that router is staff-only, by design. Retired cities
+ * never come back. `zoned: true` narrows to places with delivery, which is what
+ * a shipment's destination needs; a pickup address may be anywhere.
  */
-export async function getClientCities(): Promise<KeyValueOption[]> {
-  const cities = await get<City[]>("/client-portal/cities");
-  return cities.map(toOption);
+export function searchClientPostalCities(
+  search: string,
+  options: { zoned?: boolean } = {}
+): Promise<PostalCity[]> {
+  return get<PostalCity[]>("/client-portal/postal-cities", {
+    params: queryParams({ search, zoned: options.zoned, limit: POSTAL_CITY_SEARCH_LIMIT }),
+  });
 }
 
 /** GET /client-portal/order-statuses — catalogue, already in pipeline order. */
@@ -61,10 +62,21 @@ export async function getClientStatusTypes(): Promise<KeyValueOption[]> {
 
 // --- Staff-guard dropdowns ---------------------------------------------------
 
-/** GET /geo/cities — staff view, includes inactive cities. */
+/** GET /geo/postal-cities — staff search, active cities only. */
+export async function searchStaffPostalCities(search: string): Promise<PostalCity[]> {
+  const page = await get<PostalCityPage>("/geo/postal-cities", {
+    params: queryParams({ search, limit: POSTAL_CITY_SEARCH_LIMIT }),
+  });
+  return page.items.filter((city) => city.is_active);
+}
+
+/**
+ * The old city dropdown. Cities became postal cities (2,111 of them), which a
+ * select cannot hold, so the screens still calling this — not yet rewired to
+ * this backend — fail with a message that says where the data went.
+ */
 export async function getCities(): Promise<KeyValueOption[]> {
-  const cities = await get<City[]>("/geo/cities");
-  return cities.map(toOption);
+  return unavailable("City list (replaced by postal cities — see Locations)");
 }
 
 /** GET /geo/branches */

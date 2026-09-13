@@ -14,17 +14,17 @@ export interface BagCreate {
   destination_branch_id: number;
 }
 
-/** A physical pigeonhole at a branch, mapped to a destination city. */
+/** A physical pigeonhole at a branch, mapped to a destination postal city. */
 export interface SortingBucket {
   id: number;
   branch_id: number;
   code: string;
-  destination_city_id: number | null;
+  destination_postal_city_id: number | null;
   is_active: boolean;
 }
 
 export interface SortingBucketCreate {
   branch_id: number;
   code: string;
-  destination_city_id?: number | null;
+  destination_postal_city_id?: number | null;
 }

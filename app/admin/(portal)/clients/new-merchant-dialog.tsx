@@ -4,6 +4,9 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { useCreateMerchant } from "@/lib/hooks/use-identity";
 import { getErrorMessage } from "@/lib/api/client";
+import { searchStaffPostalCities } from "@/lib/api/dropdowns";
+import { PostalCityPicker, type PostalCityOption } from "@/components/shared/postal-city-picker";
+import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,6 +29,7 @@ const EMPTY = {
   business_name: "",
   email: "",
   phone: "",
+  address: "",
   commission_percent: "0.00",
   admin_name: "",
   admin_email: "",
@@ -36,9 +40,15 @@ const EMPTY = {
  * The business and its first login are one form because the API creates them in
  * one transaction — a merchant with no login cannot sign in, and a two-step
  * flow leaves one behind every time someone is interrupted.
+ *
+ * The address is required and its postal city is picked from the national
+ * directory rather than typed, because the API refuses a merchant without one:
+ * the same address becomes the merchant's "Main" outlet, where parcels are
+ * collected from.
  */
 export function NewMerchantDialog({ open, onOpenChange, onCreated }: Props) {
   const [form, setForm] = useState(EMPTY);
+  const [postalCity, setPostalCity] = useState<PostalCityOption | null>(null);
   const createMerchant = useCreateMerchant();
 
   function set(field: keyof typeof EMPTY, value: string) {
@@ -47,11 +57,17 @@ export function NewMerchantDialog({ open, onOpenChange, onCreated }: Props) {
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
+    if (!postalCity) {
+      toast.error("Choose the postal city of the registered address");
+      return;
+    }
     try {
       const result = await createMerchant.mutateAsync({
         business_name: form.business_name.trim(),
         email: form.email.trim(),
         phone: form.phone.trim() || null,
+        address: form.address.trim(),
+        postal_city_id: postalCity.id,
         commission_percent: form.commission_percent || "0.00",
         admin_name: form.admin_name.trim(),
         admin_email: form.admin_email.trim(),
@@ -59,6 +75,7 @@ export function NewMerchantDialog({ open, onOpenChange, onCreated }: Props) {
       });
       toast.success(`${result.client.business_name} created`);
       setForm(EMPTY);
+      setPostalCity(null);
       onOpenChange(false);
       onCreated(result.client.id);
     } catch (error) {
@@ -73,7 +90,8 @@ export function NewMerchantDialog({ open, onOpenChange, onCreated }: Props) {
           <DialogHeader>
             <DialogTitle>New merchant</DialogTitle>
             <DialogDescription>
-              Creates the business and its first portal login together.
+              Creates the business, its first portal login, and a Main outlet at
+              the registered address.
             </DialogDescription>
           </DialogHeader>
 
@@ -104,6 +122,29 @@ export function NewMerchantDialog({ open, onOpenChange, onCreated }: Props) {
                   id="phone"
                   value={form.phone}
                   onChange={(e) => set("phone", e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-2 sm:col-span-2">
+                <Label htmlFor="address">Registered address</Label>
+                <Textarea
+                  id="address"
+                  required
+                  rows={2}
+                  placeholder="Building, street"
+                  value={form.address}
+                  onChange={(e) => set("address", e.target.value)}
+                />
+              </div>
+              <div className="grid gap-2 sm:col-span-2">
+                <Label htmlFor="postal_city">Postal city</Label>
+                <PostalCityPicker
+                  id="postal_city"
+                  queryKey="staff"
+                  search={searchStaffPostalCities}
+                  value={postalCity}
+                  onChange={setPostalCity}
                 />
               </div>
             </div>

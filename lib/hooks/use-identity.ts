@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createMerchant,
   createMerchantLogin,
+  createOutlet,
   createRole,
   createStaff,
   deleteRole,
@@ -9,6 +10,7 @@ import {
   issueApiKey,
   listApiKeys,
   listMerchantLogins,
+  listOutlets,
   listMerchants,
   listPermissions,
   listRoles,
@@ -18,6 +20,7 @@ import {
   setStaffPassword,
   updateMerchant,
   updateMerchantLogin,
+  updateOutlet,
   updateRole,
   updateStaff,
 } from "@/lib/api/identity";
@@ -28,6 +31,7 @@ import type {
   CreateRolePayload,
   CreateStaffPayload,
   MerchantListParams,
+  SaveOutletPayload,
   StaffListParams,
   UpdateMerchantLoginPayload,
   UpdateMerchantPayload,
@@ -113,6 +117,35 @@ export function useUpdateMerchant() {
     onSuccess: (_merchant, { id }) => {
       queryClient.invalidateQueries({ queryKey: ["identity-merchants"] });
       queryClient.invalidateQueries({ queryKey: ["identity-merchant", id] });
+    },
+  });
+}
+
+// --- Merchant outlets -------------------------------------------------------
+
+export function useOutlets(clientId: number | null) {
+  return useQuery({
+    queryKey: ["identity-merchant-outlets", clientId],
+    queryFn: () => listOutlets(clientId as number),
+    enabled: clientId !== null,
+  });
+}
+
+export function useSaveOutlet(clientId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      payload,
+    }: {
+      id: number | null;
+      payload: Partial<SaveOutletPayload> & { is_active?: boolean };
+    }) =>
+      id === null
+        ? createOutlet(clientId, payload as SaveOutletPayload)
+        : updateOutlet(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["identity-merchant-outlets", clientId] });
     },
   });
 }

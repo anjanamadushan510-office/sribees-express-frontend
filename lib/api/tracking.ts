@@ -18,7 +18,7 @@ export interface PublicTrackingEvent {
 export interface PublicTracking {
   waybill_id: string;
   current_status: string;
-  destination_city: string | null;
+  destination_postal_city: string | null;
   created_at: string;
   events: PublicTrackingEvent[];
 }

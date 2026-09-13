@@ -10,7 +10,7 @@ import {
   listClientOrders,
   getClientOrderHistory,
 } from "@/lib/api/orders";
-import { getClientCities, getClientStatusTypes } from "@/lib/api/dropdowns";
+import { getClientStatusTypes } from "@/lib/api/dropdowns";
 import type { ClientOrdersListParams, CreateClientOrderPayload } from "@/types/order";
 
 export function useClientOrders(params: ClientOrdersListParams) {
@@ -42,14 +42,6 @@ export function useClientStatusTypes() {
     queryKey: ["client-status-types"],
     queryFn: getClientStatusTypes,
     staleTime: 60 * 60 * 1000, // the status catalogue rarely changes
-  });
-}
-
-export function useClientCities() {
-  return useQuery({
-    queryKey: ["client-cities"],
-    queryFn: getClientCities,
-    staleTime: 60 * 60 * 1000,
   });
 }
 

@@ -23,7 +23,7 @@ export interface ClientOrder {
   id: number;
   waybill_id: string | null;
   client_id: number;
-  city_id: number;
+  postal_city_id: number;
   origin_branch_id: number | null;
   current_branch_id: number | null;
   current_rider_id: number | null;
@@ -44,7 +44,7 @@ export interface ClientOrder {
   pickup_location_name: string | null;
   pickup_contact_phone: string | null;
   pickup_address: string | null;
-  pickup_post_office: string | null;
+  pickup_postal_city: string | null;
   pickup_district: string | null;
   pickup_province: string | null;
   pickup_latitude: number | null;
@@ -79,7 +79,7 @@ export interface ClientOrdersListParams extends ListRange {
 
 /** Body for `POST /client-portal/orders` (ClientOrderCreate). */
 export interface CreateClientOrderPayload {
-  city_id: number;
+  postal_city_id: number;
   origin_branch_id?: number | null;
   weight_kg?: string | number | null;
   cod_amount?: string | number | null;

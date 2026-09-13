@@ -140,7 +140,7 @@ try {
   const pickupRows = await page.locator("tbody tr").count();
   record("pickups list renders", pickupRows > 0, `${pickupRows} row(s)`);
 
-  // --- new shipment form: the city dropdown is the thing that was impossible --
+  // --- new shipment form: the postal city is searched for, not scrolled -------
   await page.goto(`${BASE_URL}/shipments/new`, { waitUntil: "domcontentloaded" });
   await settle(page);
   await shot(page, "07-new-shipment");
@@ -148,12 +148,20 @@ try {
   let cityCount = 0;
   if (await cityTrigger.count()) {
     await cityTrigger.click();
-    await page.waitForTimeout(800);
+    // Only delivered-to towns are offered as a destination; the dev seed prices
+    // Colombo district, so this search must find something. Not "Colombo":
+    // that is a district, and no post office town carries the name.
+    await page.keyboard.type("Mahara");
+    await page
+      .getByRole("option")
+      .first()
+      .waitFor({ timeout: 20_000 })
+      .catch(() => {});
     cityCount = await page.getByRole("option").count();
-    await shot(page, "08-city-dropdown");
+    await shot(page, "08-postal-city-search");
     await page.keyboard.press("Escape");
   }
-  record("city dropdown is populated from the API", cityCount > 0, `${cityCount} option(s)`);
+  record("postal city search returns towns from the API", cityCount > 0, `${cityCount} option(s)`);
 
   // --- public tracking, signed out ------------------------------------------
   const waybill = process.env.TRACK_WAYBILL;

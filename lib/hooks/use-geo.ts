@@ -1,49 +1,70 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  assignPostOfficesToCity,
-  listCities,
-  listPostOfficeRegions,
-  listPostOffices,
-  updatePostOffice,
+  assignPostalCitiesToBranch,
+  assignPostalCitiesToZone,
+  listBranches,
+  listPostalCities,
+  listPostalCityRegions,
+  listZones,
+  updatePostalCity,
 } from "@/lib/api/admin-geo";
-import type { PostOfficeAssign, PostOfficeListParams } from "@/types/admin-geo";
+import type {
+  PostalCityBranchAssign,
+  PostalCityListParams,
+  PostalCityZoneAssign,
+} from "@/types/admin-geo";
 
-/** Cities are the operational grouping a post office gets attached to. */
-export function useGeoCities() {
-  return useQuery({ queryKey: ["geo-cities"], queryFn: listCities });
+export function useGeoZones() {
+  return useQuery({ queryKey: ["geo-zones"], queryFn: listZones });
 }
 
-export function usePostOffices(params: PostOfficeListParams = {}) {
+export function useGeoBranches() {
+  return useQuery({ queryKey: ["geo-branches"], queryFn: listBranches });
+}
+
+export function usePostalCities(params: PostalCityListParams = {}) {
   return useQuery({
-    queryKey: ["geo-post-offices", params],
-    queryFn: () => listPostOffices(params),
+    queryKey: ["geo-postal-cities", params],
+    queryFn: () => listPostalCities(params),
     placeholderData: (previous) => previous,
   });
 }
 
-export function usePostOfficeRegions() {
+export function usePostalCityRegions() {
   return useQuery({
-    queryKey: ["geo-post-office-regions"],
-    queryFn: listPostOfficeRegions,
+    queryKey: ["geo-postal-city-regions"],
+    queryFn: listPostalCityRegions,
   });
 }
 
-function invalidatePostOffices(queryClient: ReturnType<typeof useQueryClient>) {
-  queryClient.invalidateQueries({ queryKey: ["geo-post-offices"] });
+function invalidatePostalCities(queryClient: ReturnType<typeof useQueryClient>) {
+  queryClient.invalidateQueries({ queryKey: ["geo-postal-cities"] });
   // The per-district counts are the whole point of the screen, so they must
   // not survive a change to what they are counting.
-  queryClient.invalidateQueries({ queryKey: ["geo-post-office-regions"] });
+  queryClient.invalidateQueries({ queryKey: ["geo-postal-city-regions"] });
 }
 
-export function useAssignPostOffices() {
+export function useAssignPostalCitiesToZone() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: PostOfficeAssign) => assignPostOfficesToCity(payload),
-    onSuccess: () => invalidatePostOffices(queryClient),
+    mutationFn: (payload: PostalCityZoneAssign) => assignPostalCitiesToZone(payload),
+    onSuccess: () => invalidatePostalCities(queryClient),
   });
 }
 
-export function useUpdatePostOffice() {
+export function useAssignPostalCitiesToBranch() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: PostalCityBranchAssign) => assignPostalCitiesToBranch(payload),
+    onSuccess: () => {
+      invalidatePostalCities(queryClient);
+      // Branch rows carry a coverage count.
+      queryClient.invalidateQueries({ queryKey: ["geo-branches"] });
+    },
+  });
+}
+
+export function useUpdatePostalCity() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({
@@ -51,8 +72,8 @@ export function useUpdatePostOffice() {
       payload,
     }: {
       id: number;
-      payload: { city_id?: number | null; is_active?: boolean };
-    }) => updatePostOffice(id, payload),
-    onSuccess: () => invalidatePostOffices(queryClient),
+      payload: { zone_id?: number | null; is_active?: boolean };
+    }) => updatePostalCity(id, payload),
+    onSuccess: () => invalidatePostalCities(queryClient),
   });
 }

@@ -66,7 +66,7 @@ alternative was leaving a button that always errored.
 | Drivers | `/fleet/riders*` (read-only) |
 | Notification settings | `/notifications/settings*` |
 
-API modules also exist for `/geo` (zones, cities, branches, post offices),
+API modules also exist for `/geo` (zones, postal cities, branches),
 `/warehouse` (bags, sorting buckets) and `/finance` (branch and rider deposits,
 approve/reject) — `lib/api/admin-geo.ts`, `admin-warehouse.ts`,
 `admin-finance.ts`. Their screens are not rewired yet, so those pages still
@@ -107,7 +107,7 @@ seeder over SSH, which is not a process anyone can hand to an administrator.
 | — API keys tab | `GET,POST /identity/clients/{id}/api-keys`, `POST /identity/api-keys/{id}/revoke` |
 | Staff & riders (`/admin/staff`) | `GET,POST /identity/staff`, `GET,PATCH /identity/staff/{id}`, `POST /identity/staff/{id}/password` |
 | Roles & permissions (`/admin/roles`) | `GET /identity/permissions`, `GET,POST /identity/roles`, `GET,PATCH,DELETE /identity/roles/{id}` |
-| Post offices (`/admin/locations`) | `GET /geo/post-offices` (paged), `GET /geo/post-offices/regions`, `POST /geo/post-offices/assign-city` |
+| Post offices (`/admin/locations`) | *Replaced 2026-09-13 — see "Postal cities and outlets" below* |
 
 Three things about these worth knowing before changing them:
 
@@ -184,3 +184,30 @@ Login is rate limited too: 30 attempts a minute per IP, and five *failed*
 attempts per fifteen minutes per email address. A client hitting either gets a
 429 with `Retry-After`, which the UI should surface as "too many attempts, try
 again in N seconds" rather than as a generic error.
+
+**2026-09-13 — Postal cities and outlets.** The backend merged cities and the
+post office directory into one table, *postal cities* (all 2,111 Sri Lanka Post
+towns), and turned ecommerce pickup locations into client *outlets*.
+
+| Screen | Endpoints |
+|---|---|
+| Locations → Postal cities (`/admin/locations`) | `GET /geo/postal-cities` (paged, filters), `GET /geo/postal-cities/regions`, `POST /geo/postal-cities/assign-zone`, `POST /geo/postal-cities/assign-branch` |
+| Locations → Zones | `GET,POST /geo/zones`, `PATCH /geo/zones/{id}` — **rewired**, the Laravel zone and city screens are deleted |
+| Merchant → registration | `POST /identity/clients` now requires `address` + `postal_city_id`, and creates a `Main` outlet |
+| Merchant → Outlets tab | `GET,POST /identity/clients/{id}/outlets`, `PATCH /identity/outlets/{id}` |
+| Merchant → Portal logins | `outlet_id` on create, and a per-row outlet select (`PATCH /identity/client-users/{id}`) |
+| Customer → new shipment | `GET /client-portal/postal-cities?zoned=true` search, `postal_city_id` on the order |
+| Customer → request pickup | `GET /client-portal/outlets` to prefill, `postal_city_id` required |
+
+- **A postal city is searched for, never listed.** `components/shared/postal-city-picker.tsx`
+  queries the server as you type (2+ letters) and shows the district beside each
+  name, because four post office names repeat across districts. District names
+  are not town names — "Colombo" finds nothing, "Maharagama" does.
+- **A shipment destination must be zoned; a pickup address need not be.** The
+  picker on the shipment form passes `zoned=true`; the pickup one does not.
+- **Still on Laravel:** `/admin/branches` (and its branch form), `/admin/sorting`.
+  `getCities()` now throws an explicit "replaced by postal cities" error so
+  those screens fail visibly. Branch *coverage* no longer needs the branch form —
+  it is drawn per district from Locations.
+- Registration without a phone makes a `Main` outlet with an empty phone; the
+  outlet edit form then requires one.

@@ -4,6 +4,7 @@ import type {
   ApiKey,
   ApiKeyCreated,
   ApiKeyEnvironment,
+  ClientOutlet,
   CreateMerchantLoginPayload,
   CreateMerchantPayload,
   CreateRolePayload,
@@ -13,6 +14,7 @@ import type {
   MerchantLogin,
   Permission,
   RoleDetail,
+  SaveOutletPayload,
   Staff,
   StaffListParams,
   UpdateMerchantLoginPayload,
@@ -94,16 +96,18 @@ export async function getMerchant(clientId: number): Promise<Merchant> {
 }
 
 /**
- * POST /identity/clients — creates the business and its first login together.
- * A merchant with no login is onboarded halfway, so the API takes both.
+ * POST /identity/clients — creates the business, its first login and a "Main"
+ * outlet at the registered address together. A merchant with no login, or with
+ * nowhere to be collected from, is onboarded halfway, so the API takes all three.
  */
 export async function createMerchant(
   payload: CreateMerchantPayload
-): Promise<{ client: Merchant; admin_user: MerchantLogin }> {
-  const { data } = await api.post<{ client: Merchant; admin_user: MerchantLogin }>(
-    "/identity/clients",
-    payload
-  );
+): Promise<{ client: Merchant; admin_user: MerchantLogin; outlet: ClientOutlet }> {
+  const { data } = await api.post<{
+    client: Merchant;
+    admin_user: MerchantLogin;
+    outlet: ClientOutlet;
+  }>("/identity/clients", payload);
   return data;
 }
 
@@ -115,6 +119,29 @@ export async function updateMerchant(
     `/identity/clients/${clientId}`,
     payload
   );
+  return data;
+}
+
+// --- Merchant outlets -------------------------------------------------------
+
+export async function listOutlets(clientId: number): Promise<ClientOutlet[]> {
+  return get<ClientOutlet[]>(`/identity/clients/${clientId}/outlets`);
+}
+
+export async function createOutlet(
+  clientId: number,
+  payload: SaveOutletPayload
+): Promise<ClientOutlet> {
+  const { data } = await api.post<ClientOutlet>(`/identity/clients/${clientId}/outlets`, payload);
+  return data;
+}
+
+/** Partial. `is_active: false` retires an outlet; there is no delete. */
+export async function updateOutlet(
+  outletId: number,
+  payload: Partial<SaveOutletPayload> & { is_active?: boolean }
+): Promise<ClientOutlet> {
+  const { data } = await api.patch<ClientOutlet>(`/identity/outlets/${outletId}`, payload);
   return data;
 }
 

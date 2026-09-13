@@ -1,44 +1,45 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Search, RotateCcw } from "lucide-react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Plus } from "lucide-react";
 import { toast } from "sonner";
-import { useAuth } from "@/providers/auth-provider";
-import { useCities, useToggleCityStatus, useZones } from "@/lib/hooks/use-admin-locations";
-import type { CityRow, ZoneRow } from "@/types/admin-location";
+import { createZone, updateZone } from "@/lib/api/admin-geo";
+import { useGeoZones } from "@/lib/hooks/use-geo";
+import type { Zone, ZoneCreate } from "@/types/admin-geo";
 import { getErrorMessage } from "@/lib/api/client";
 import { PageHeader } from "@/components/shared/page-header";
 import { DataTable, type Column } from "@/components/shared/data-table";
-import { Pagination } from "@/components/shared/pagination";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CityFormDialog } from "@/components/forms/city-form-dialog";
-import { ZoneFormDialog } from "@/components/forms/zone-form-dialog";
-import { PostOfficesTab } from "@/components/admin/post-offices-tab";
-
-const PER_PAGE = 15;
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { PostalCitiesTab } from "@/components/admin/postal-cities-tab";
 
 export default function AdminLocationsPage() {
   return (
     <>
       <PageHeader
         title="Locations"
-        description="Delivery zones price a parcel, cities group post offices, and post offices are the names merchants actually send us."
+        description="Postal cities are where every address lives. A zone prices a postal city; a branch covers it."
       />
-      <Tabs defaultValue="post-offices">
+      <Tabs defaultValue="postal-cities">
         <TabsList>
-          <TabsTrigger value="post-offices">Post offices</TabsTrigger>
-          <TabsTrigger value="cities">Cities</TabsTrigger>
+          <TabsTrigger value="postal-cities">Postal cities</TabsTrigger>
           <TabsTrigger value="zones">Zones</TabsTrigger>
         </TabsList>
-        <TabsContent value="post-offices">
-          <PostOfficesTab />
-        </TabsContent>
-        <TabsContent value="cities">
-          <CitiesTab />
+        <TabsContent value="postal-cities">
+          <PostalCitiesTab />
         </TabsContent>
         <TabsContent value="zones">
           <ZonesTab />
@@ -48,252 +49,161 @@ export default function AdminLocationsPage() {
   );
 }
 
-function CitiesTab() {
-  const { hasPermission } = useAuth();
-  const [page, setPage] = useState(1);
-  const [search, setSearch] = useState("");
-  const [appliedSearch, setAppliedSearch] = useState("");
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
+const money = (value: string) =>
+  Number(value).toLocaleString(undefined, { minimumFractionDigits: 2 });
 
-  const { data, isFetching, isError } = useCities({
-    page,
-    perPage: PER_PAGE,
-    city_name: appliedSearch || undefined,
-  });
-  const toggleMutation = useToggleCityStatus();
+/**
+ * Pricing tiers. A zone does nothing until postal cities are given it on the
+ * Postal cities tab, and deactivating one stops delivery to every city it
+ * prices — the merchant API drops them from its list at once.
+ */
+function ZonesTab() {
+  const { data: zones, isFetching, isError, error } = useGeoZones();
+  const [editing, setEditing] = useState<Zone | "new" | null>(null);
 
-  const openCreate = () => {
-    setEditingId(null);
-    setDialogOpen(true);
-  };
-  const openEdit = (row: CityRow) => {
-    setEditingId(row.id);
-    setDialogOpen(true);
-  };
-
-  const columns: Column<CityRow>[] = [
-    { header: "City", cell: (r) => <span className="font-medium">{r.city}</span> },
-    { header: "District", cell: (r) => r.district ?? "—" },
-    { header: "Zone", cell: (r) => r.zone ?? "—" },
-    { header: "Branch", cell: (r) => r.branch ?? "—" },
-    { header: "Postcode", cell: (r) => r.postcode ?? "—" },
-    { header: "Status", cell: (r) => <StatusBadge status={r.status} /> },
+  const columns: Column<Zone>[] = [
+    { header: "Zone", cell: (r) => <span className="font-medium">{r.name}</span> },
+    { header: "First kg", className: "text-right", cell: (r) => money(r.first_kg) },
+    { header: "Each kg after", className: "text-right", cell: (r) => money(r.after_kg) },
+    { header: "Return first kg", className: "text-right", cell: (r) => money(r.return_first_kg) },
     {
-      header: "",
+      header: "Return each kg after",
       className: "text-right",
-      cell: (r) =>
-        hasPermission("active-city") || hasPermission("deactivate-city") ? (
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={toggleMutation.isPending}
-            onClick={(e) => {
-              e.stopPropagation();
-              toggleMutation.mutate(
-                { id: r.id, isActive: r.status.toLowerCase() !== "active" },
-                {
-                  onSuccess: () => toast.success("City status updated"),
-                  onError: (error) =>
-                    toast.error(getErrorMessage(error, "Could not update status")),
-                }
-              );
-            }}
-          >
-            {r.status.toLowerCase() === "active" ? "Deactivate" : "Activate"}
-          </Button>
-        ) : null,
+      cell: (r) => money(r.return_after_kg),
+    },
+    {
+      header: "Status",
+      cell: (r) => <StatusBadge status={r.is_active ? "Active" : "Inactive"} />,
     },
   ];
 
   return (
     <>
-      <Card className="mb-4 mt-4">
-        <CardContent className="flex flex-col gap-3 pt-6 sm:flex-row sm:items-end">
-          <div className="flex-1 space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">City name</label>
-            <Input
-              placeholder="Search city…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  setAppliedSearch(search.trim());
-                  setPage(1);
-                }
-              }}
-            />
-          </div>
-          <div className="flex gap-2">
-            <Button
-              onClick={() => {
-                setAppliedSearch(search.trim());
-                setPage(1);
-              }}
-            >
-              <Search className="size-4" />
-              Search
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setSearch("");
-                setAppliedSearch("");
-                setPage(1);
-              }}
-            >
-              <RotateCcw className="size-4" />
-              Reset
-            </Button>
-            {hasPermission("create-city") && (
-              <Button onClick={openCreate}>
-                <Plus className="size-4" />
-                New City
-              </Button>
-            )}
-          </div>
+      <Card className="mt-4">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>Zones</CardTitle>
+          <Button onClick={() => setEditing("new")}>
+            <Plus className="mr-2 h-4 w-4" />
+            New zone
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {isError && (
+            <p className="mb-4 text-sm text-destructive">
+              {error instanceof Error ? error.message : "Could not load zones."}
+            </p>
+          )}
+          <DataTable
+            columns={columns}
+            rows={zones}
+            isLoading={isFetching && !zones}
+            rowKey={(r) => r.id}
+            onRowClick={(r) => setEditing(r)}
+            emptyMessage="No zones yet — create one before pricing any postal city."
+          />
         </CardContent>
       </Card>
 
-      {isError ? (
-        <Card>
-          <CardContent className="py-10 text-center text-sm text-muted-foreground">
-            Couldn&apos;t load cities right now. Check your connection and try again.
-          </CardContent>
-        </Card>
-      ) : (
-        <>
-          <DataTable
-            columns={columns}
-            rows={data?.items}
-            isLoading={isFetching && !data}
-            rowKey={(r) => r.id}
-            onRowClick={hasPermission("edit-city") ? openEdit : undefined}
-            emptyMessage="No cities found."
-          />
-          <Pagination
-            pagination={data?.pagination}
-            onPageChange={setPage}
-            isLoading={isFetching}
-          />
-        </>
+      {editing !== null && (
+        <ZoneDialog zone={editing === "new" ? null : editing} onClose={() => setEditing(null)} />
       )}
-
-      <CityFormDialog open={dialogOpen} onOpenChange={setDialogOpen} cityId={editingId} />
     </>
   );
 }
 
-function ZonesTab() {
-  const { hasPermission } = useAuth();
-  const [page, setPage] = useState(1);
-  const [search, setSearch] = useState("");
-  const [appliedSearch, setAppliedSearch] = useState("");
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
+const RATE_FIELDS: { key: keyof ZoneCreate; label: string }[] = [
+  { key: "first_kg", label: "First kg (LKR)" },
+  { key: "after_kg", label: "Each kg after (LKR)" },
+  { key: "return_first_kg", label: "Return first kg (LKR)" },
+  { key: "return_after_kg", label: "Return each kg after (LKR)" },
+];
 
-  const { data, isFetching, isError } = useZones({
-    page,
-    perPage: PER_PAGE,
-    zone_name: appliedSearch || undefined,
+function ZoneDialog({ zone, onClose }: { zone: Zone | null; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const [form, setForm] = useState<ZoneCreate>({
+    name: zone?.name ?? "",
+    first_kg: zone?.first_kg ?? "",
+    after_kg: zone?.after_kg ?? "",
+    return_first_kg: zone?.return_first_kg ?? "",
+    return_after_kg: zone?.return_after_kg ?? "",
+  });
+  const [isActive, setIsActive] = useState(zone?.is_active ?? true);
+
+  const save = useMutation({
+    // Decimal strings, never numbers: these are NUMERIC columns and a float
+    // round-trip is exactly what a price must not go through.
+    mutationFn: () =>
+      zone ? updateZone(zone.id, { ...form, is_active: isActive }) : createZone(form),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["geo-zones"] });
+      toast.success(zone ? "Zone updated" : "Zone created");
+      onClose();
+    },
+    onError: (err) => toast.error(getErrorMessage(err, "Could not save the zone")),
   });
 
-  const openCreate = () => {
-    setEditingId(null);
-    setDialogOpen(true);
-  };
-  const openEdit = (row: ZoneRow) => {
-    setEditingId(row.id);
-    setDialogOpen(true);
-  };
-
-  const columns: Column<ZoneRow>[] = [
-    { header: "Zone", cell: (r) => <span className="font-medium">{r.name}</span> },
-    { header: "1st KG", className: "text-right", cell: (r) => r.delivery_start_kg },
-    { header: "After KG", className: "text-right", cell: (r) => r.delivery_additional_kg },
-    { header: "Return 1st KG", className: "text-right", cell: (r) => r.return_start_kg },
-    {
-      header: "Return after KG",
-      className: "text-right",
-      cell: (r) => r.return_additional_kg,
-    },
-    { header: "Weight margin", className: "text-right", cell: (r) => r.margin_kg },
-  ];
-
   return (
-    <>
-      <Card className="mb-4 mt-4">
-        <CardContent className="flex flex-col gap-3 pt-6 sm:flex-row sm:items-end">
-          <div className="flex-1 space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">Zone name</label>
-            <Input
-              placeholder="Search zone…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  setAppliedSearch(search.trim());
-                  setPage(1);
-                }
-              }}
-            />
-          </div>
-          <div className="flex gap-2">
-            <Button
-              onClick={() => {
-                setAppliedSearch(search.trim());
-                setPage(1);
-              }}
-            >
-              <Search className="size-4" />
-              Search
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setSearch("");
-                setAppliedSearch("");
-                setPage(1);
-              }}
-            >
-              <RotateCcw className="size-4" />
-              Reset
-            </Button>
-            {hasPermission("create-zone") && (
-              <Button onClick={openCreate}>
-                <Plus className="size-4" />
-                New Zone
-              </Button>
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            save.mutate();
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>{zone ? `Edit ${zone.name}` : "New zone"}</DialogTitle>
+            <DialogDescription>
+              A new rate applies to quotes from now on. Parcels already booked keep
+              the price they were quoted.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="zone_name">Name</Label>
+              <Input
+                id="zone_name"
+                required
+                value={form.name}
+                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+              />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {RATE_FIELDS.map(({ key, label }) => (
+                <div key={key} className="grid gap-2">
+                  <Label htmlFor={`zone_${key}`}>{label}</Label>
+                  <Input
+                    id={`zone_${key}`}
+                    required
+                    inputMode="decimal"
+                    pattern="\d+(\.\d{1,2})?"
+                    value={form[key] ?? ""}
+                    onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
+                  />
+                </div>
+              ))}
+            </div>
+            {zone && (
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={isActive}
+                  onChange={(e) => setIsActive(e.target.checked)}
+                />
+                Active — unticking stops delivery to every postal city in this zone
+              </label>
             )}
           </div>
-        </CardContent>
-      </Card>
-
-      {isError ? (
-        <Card>
-          <CardContent className="py-10 text-center text-sm text-muted-foreground">
-            Couldn&apos;t load zones right now. Check your connection and try again.
-          </CardContent>
-        </Card>
-      ) : (
-        <>
-          <DataTable
-            columns={columns}
-            rows={data?.items}
-            isLoading={isFetching && !data}
-            rowKey={(r) => r.id}
-            onRowClick={hasPermission("edit-zone") ? openEdit : undefined}
-            emptyMessage="No zones found."
-          />
-          <Pagination
-            pagination={data?.pagination}
-            onPageChange={setPage}
-            isLoading={isFetching}
-          />
-        </>
-      )}
-
-      <ZoneFormDialog open={dialogOpen} onOpenChange={setDialogOpen} zoneId={editingId} />
-    </>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose} disabled={save.isPending}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={save.isPending}>
+              {save.isPending ? "Saving…" : "Save zone"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

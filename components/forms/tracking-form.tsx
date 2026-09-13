@@ -96,7 +96,7 @@ export function TrackingForm({ initialWaybill }: { initialWaybill?: string }) {
             */}
             <dl className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
               <Detail icon={<MapPin className="size-4" />} label="Destination">
-                {result.destination_city ?? "—"}
+                {result.destination_postal_city ?? "—"}
               </Detail>
               <Detail icon={<CalendarDays className="size-4" />} label="Placed">
                 {formatDate(result.created_at)}

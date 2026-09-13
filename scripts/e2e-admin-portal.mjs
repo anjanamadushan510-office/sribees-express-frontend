@@ -195,37 +195,53 @@ try {
     /Everything, by name/i.test(rolesText)
   );
 
-  // --- post offices ----------------------------------------------------------
+  // --- postal cities ---------------------------------------------------------
   await page.goto(`${BASE_URL}/admin/locations`, { waitUntil: "domcontentloaded" });
   await settle(page, 2000);
-  // The coverage figure and the table are two separate queries, and the table
+  // The rollout figure and the table are two separate queries, and the table
   // wins the race. Reading the body on a timer caught "0 of 0" and reported an
   // unseeded directory against a database holding all 2,111.
   await page
     .waitForFunction(
-      () => !/\bof 0 post\s*offices/i.test(document.body.innerText),
+      () => !/\bof 0 postal\s*cities/i.test(document.body.innerText),
       undefined,
       { timeout: 30_000 }
     )
     .catch(() => {});
-  await shot(page, "10-post-offices");
+  await shot(page, "10-postal-cities");
   const geoText = await page.locator("body").innerText();
-  // The seed migration lands 2,111 rows; anything far below that means it did
-  // not run, and every merchant address would resolve to post_office_not_found.
-  const coverage = geoText.match(/of ([\d,]+) post\s*offices/i);
+  // The migration lands 2,111 rows; anything far below that means it did not
+  // run, and no address anywhere could be given a postal city.
+  const coverage = geoText.match(/of ([\d,]+) postal\s*cities/i);
   const seeded = coverage ? Number(coverage[1].replace(/,/g, "")) : 0;
-  record("post office directory is seeded", seeded >= 2000, `${seeded} in directory`);
+  record("postal city directory is seeded", seeded >= 2000, `${seeded} in directory`);
   // Counted, not pattern-matched: every district name also appears in the table
   // below, so a text search would pass even with no coverage card at all.
   const districtCards = await page
     .locator('button:has-text("Province")')
     .count();
   record(
-    "coverage is broken down by all 25 districts",
+    "rollout is broken down by all 25 districts",
     districtCards >= 25,
     `${districtCards} district card(s)`
   );
-  await recordList(page, "post office list renders a page");
+  await recordList(page, "postal city list renders a page");
+
+  // A district card opens both assignments; nothing is changed here, only that
+  // the dialog offers them.
+  await page.locator('button:has-text("Province")').first().click();
+  await page.waitForSelector("text=Pricing zone", { timeout: 30_000 });
+  const regionDialog = await page.locator('[role="dialog"]').innerText();
+  record(
+    "a district offers both a zone and branch coverage",
+    /Pricing zone/.test(regionDialog) && /Branch coverage/.test(regionDialog)
+  );
+  await page.keyboard.press("Escape");
+
+  await page.click('button[role="tab"]:has-text("Zones")');
+  await settle(page, 1500);
+  await shot(page, "10b-zones");
+  await recordList(page, "zones render from this backend");
 
   // --- merchants: the onboarding flow that hands out an API key --------------
   await page.goto(`${BASE_URL}/admin/clients`, { waitUntil: "domcontentloaded" });
@@ -253,6 +269,14 @@ try {
     await page.fill("#business_name", "E2E Test Merchant");
     await page.fill("#email", MERCHANT_EMAIL);
     await page.fill("#commission_percent", "5.00");
+    await page.fill("#address", "1 E2E Street");
+    // The postal city is searched for, never typed into a free-text field.
+    await page.click("#postal_city");
+    await page.keyboard.type("Maharagama");
+    const cityOption = page.locator('[role="option"]:has-text("Maharagama")').first();
+    await cityOption.waitFor({ timeout: 30_000 });
+    record("the postal city picker finds a real town", true);
+    await cityOption.click();
     await page.fill("#admin_name", "E2E Contact");
     await page.fill("#admin_email", "e2e-merchant-login@sribees.dev");
     await page.fill("#admin_password", E2E_PASSWORD);
@@ -266,6 +290,14 @@ try {
   }
   await settle(page);
   await shot(page, "12-merchant-detail");
+
+  // Outlets tab — registration makes the first one at the registered address
+  await page.click('button[role="tab"]:has-text("Outlets")');
+  await settle(page, 1500);
+  await shot(page, "12b-merchant-outlets");
+  const outletText = await page.locator("tbody").innerText();
+  record("the merchant has its Main outlet", /\bMain\b/.test(outletText));
+  record("the outlet shows its postal city by name", /—/.test(outletText));
 
   // Portal logins tab
   await page.click('button[role="tab"]:has-text("Portal logins")');

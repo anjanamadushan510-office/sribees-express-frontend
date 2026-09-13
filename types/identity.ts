@@ -33,17 +33,50 @@ export interface Staff {
   roles: Role[];
 }
 
+/** The town an address is in, sent alongside its id so nothing needs a lookup. */
+export interface PostalCityRef {
+  id: number;
+  name: string;
+  district: string | null;
+  province: string | null;
+}
+
 export interface Merchant {
   id: number;
   business_name: string;
   email: string;
+  phone: string | null;
+  /** Registered address. Null only for merchants created before it was required. */
+  address: string | null;
+  postal_city_id: number | null;
+  postal_city: PostalCityRef | null;
   commission_percent: string;
+  is_active: boolean;
+}
+
+/**
+ * One of a merchant's physical locations — where parcels are collected from.
+ * Registration makes the first one ("Main") at the registered address. Outlets
+ * are retired, never deleted: orders keep a copy of where they came from.
+ */
+export interface ClientOutlet {
+  id: number;
+  client_id: number;
+  name: string;
+  phone: string;
+  address: string;
+  postal_city_id: number;
+  postal_city: PostalCityRef;
+  latitude: number | null;
+  longitude: number | null;
   is_active: boolean;
 }
 
 export interface MerchantLogin {
   id: number;
   client_id: number;
+  /** The outlet this login works at. Null for people who speak for all of them. */
+  outlet_id: number | null;
   name: string;
   email: string;
   is_active: boolean;
@@ -112,6 +145,9 @@ export interface CreateMerchantPayload {
   email: string;
   phone?: string | null;
   commission_percent: string;
+  /** Required. The same address becomes the merchant's "Main" outlet. */
+  address: string;
+  postal_city_id: number;
   /** The first login, created in the same transaction as the merchant. */
   admin_name: string;
   admin_email: string;
@@ -122,19 +158,32 @@ export interface UpdateMerchantPayload {
   business_name?: string;
   email?: string;
   phone?: string | null;
+  /** Can be changed, never cleared. */
+  address?: string;
+  postal_city_id?: number;
   commission_percent?: string;
   is_active?: boolean;
+}
+
+export interface SaveOutletPayload {
+  name: string;
+  phone: string;
+  address: string;
+  postal_city_id: number;
 }
 
 export interface CreateMerchantLoginPayload {
   name: string;
   email: string;
   password: string;
+  outlet_id?: number | null;
 }
 
 export interface UpdateMerchantLoginPayload {
   name?: string;
   email?: string;
+  /** `null` detaches the login from its outlet. */
+  outlet_id?: number | null;
   is_active?: boolean;
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -8,7 +8,8 @@ import { z } from "zod";
 import { toast } from "sonner";
 import axios from "axios";
 import { Loader2 } from "lucide-react";
-import { useClientCities, useCreateClientOrder } from "@/lib/hooks/use-client-orders";
+import { useCreateClientOrder } from "@/lib/hooks/use-client-orders";
+import { searchClientPostalCities } from "@/lib/api/dropdowns";
 import { getErrorMessage } from "@/lib/api/client";
 import type { CreateClientOrderPayload } from "@/types/order";
 import type { ValidationErrorItem } from "@/types/api";
@@ -17,7 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Combobox } from "@/components/shared/combobox";
+import { PostalCityPicker, type PostalCityOption } from "@/components/shared/postal-city-picker";
 
 const phone = z
   .string()
@@ -36,7 +37,7 @@ const schema = z.object({
   recipient_name: z.string().trim().min(1, "Recipient name is required").max(200),
   recipient_phone: phone,
   recipient_address: z.string().trim().min(1, "Address is required").max(500),
-  city_id: z.string().min(1, "Select a city"),
+  postal_city_id: z.string().min(1, "Choose the postal city"),
   weight_kg: z.coerce
     .number({ message: "Enter the parcel weight" })
     .positive("Weight must be greater than zero")
@@ -50,7 +51,7 @@ type FormValues = z.input<typeof schema>;
 
 export function CreateShipmentForm() {
   const router = useRouter();
-  const { data: cities, isLoading: citiesLoading } = useClientCities();
+  const [postalCity, setPostalCity] = useState<PostalCityOption | null>(null);
   const mutation = useCreateClientOrder();
 
   const form = useForm<FormValues>({
@@ -59,16 +60,11 @@ export function CreateShipmentForm() {
       recipient_name: "",
       recipient_phone: "",
       recipient_address: "",
-      city_id: "",
+      postal_city_id: "",
       weight_kg: undefined,
       cod_amount: undefined,
     },
   });
-
-  const cityOptions = useMemo(
-    () => (cities ?? []).map((c) => ({ value: c.key, label: c.value })),
-    [cities]
-  );
 
   const onSubmit = (values: FormValues) => {
     // No client_id in the payload: the backend derives it from the token, so
@@ -77,7 +73,7 @@ export function CreateShipmentForm() {
       recipient_name: values.recipient_name!,
       recipient_phone: values.recipient_phone!,
       recipient_address: values.recipient_address!,
-      city_id: Number(values.city_id),
+      postal_city_id: Number(values.postal_city_id),
       // Sent as strings: these are NUMERIC columns server-side, and a float
       // round-trip is exactly what you do not want on a money field.
       weight_kg: String(values.weight_kg),
@@ -142,15 +138,18 @@ export function CreateShipmentForm() {
             />
           </Field>
 
-          <Field label="City" error={form.formState.errors.city_id?.message}>
-            <Combobox
-              options={cityOptions}
-              value={form.watch("city_id")}
-              onChange={(v) => form.setValue("city_id", v, { shouldValidate: true })}
-              placeholder={citiesLoading ? "Loading cities…" : "Select a city"}
-              searchPlaceholder="Search city…"
-              emptyMessage="No city found."
-              disabled={citiesLoading}
+          <Field label="Postal city" error={form.formState.errors.postal_city_id?.message}>
+            {/* Only places with delivery: an order to anywhere else is refused. */}
+            <PostalCityPicker
+              queryKey="client-zoned"
+              search={(term) => searchClientPostalCities(term, { zoned: true })}
+              value={postalCity}
+              onChange={(city) => {
+                setPostalCity(city);
+                form.setValue("postal_city_id", city ? String(city.id) : "", {
+                  shouldValidate: true,
+                });
+              }}
             />
           </Field>
 
