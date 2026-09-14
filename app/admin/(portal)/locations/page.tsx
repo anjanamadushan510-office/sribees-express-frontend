@@ -4,9 +4,9 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
-import { createZone, updateZone } from "@/lib/api/admin-geo";
-import { useGeoZones } from "@/lib/hooks/use-geo";
-import type { Zone, ZoneCreate } from "@/types/admin-geo";
+import { createZone, createZoneLane, updateZone, updateZoneLane } from "@/lib/api/admin-geo";
+import { useGeoZones, useZoneLanes } from "@/lib/hooks/use-geo";
+import type { Zone, ZoneCreate, ZoneLane } from "@/types/admin-geo";
 import { getErrorMessage } from "@/lib/api/client";
 import { PageHeader } from "@/components/shared/page-header";
 import { DataTable, type Column } from "@/components/shared/data-table";
@@ -16,6 +16,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -37,12 +44,16 @@ export default function AdminLocationsPage() {
         <TabsList>
           <TabsTrigger value="postal-cities">Postal cities</TabsTrigger>
           <TabsTrigger value="zones">Zones</TabsTrigger>
+          <TabsTrigger value="lanes">Zone lanes</TabsTrigger>
         </TabsList>
         <TabsContent value="postal-cities">
           <PostalCitiesTab />
         </TabsContent>
         <TabsContent value="zones">
           <ZonesTab />
+        </TabsContent>
+        <TabsContent value="lanes">
+          <ZoneLanesTab />
         </TabsContent>
       </Tabs>
     </>
@@ -200,6 +211,225 @@ function ZoneDialog({ zone, onClose }: { zone: Zone | null; onClose: () => void 
             </Button>
             <Button type="submit" disabled={save.isPending}>
               {save.isPending ? "Saving…" : "Save zone"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+const RATE_PATTERN = "\\d+(\\.\\d{1,2})?";
+
+/**
+ * Prices between two zones. A merchant quote is priced from the zone of the
+ * outlet's postal city to the zone of the customer's; an active lane for that
+ * pair wins, otherwise the destination zone's own rate applies.
+ */
+function ZoneLanesTab() {
+  const { data: zones } = useGeoZones();
+  const { data: lanes, isFetching, isError, error } = useZoneLanes();
+  const [editing, setEditing] = useState<ZoneLane | "new" | null>(null);
+  const zoneName = (id: number) => zones?.find((z) => z.id === id)?.name ?? `#${id}`;
+
+  const columns: Column<ZoneLane>[] = [
+    {
+      header: "From zone",
+      cell: (r) => <span className="font-medium">{zoneName(r.origin_zone_id)}</span>,
+    },
+    { header: "To zone", cell: (r) => zoneName(r.destination_zone_id) },
+    { header: "First kg", className: "text-right", cell: (r) => money(r.first_kg) },
+    { header: "Each kg after", className: "text-right", cell: (r) => money(r.after_kg) },
+    {
+      header: "Status",
+      cell: (r) => <StatusBadge status={r.is_active ? "Active" : "Inactive"} />,
+    },
+  ];
+
+  return (
+    <>
+      <Card className="mt-4">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>Zone lanes</CardTitle>
+          <Button onClick={() => setEditing("new")} disabled={!zones?.length}>
+            <Plus className="mr-2 h-4 w-4" />
+            New lane
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {isError && (
+            <p className="mb-4 text-sm text-destructive">
+              {error instanceof Error ? error.message : "Could not load zone lanes."}
+            </p>
+          )}
+          <DataTable
+            columns={columns}
+            rows={lanes}
+            isLoading={isFetching && !lanes}
+            rowKey={(r) => r.id}
+            onRowClick={(r) => setEditing(r)}
+            emptyMessage="No lanes — every quote uses the destination zone's rate."
+          />
+        </CardContent>
+      </Card>
+
+      {editing !== null && (
+        <ZoneLaneDialog
+          lane={editing === "new" ? null : editing}
+          zones={zones ?? []}
+          onClose={() => setEditing(null)}
+        />
+      )}
+    </>
+  );
+}
+
+function ZoneSelect({
+  id,
+  label,
+  value,
+  zones,
+  disabled,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  zones: Zone[];
+  disabled: boolean;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="grid gap-2">
+      <Label htmlFor={id}>{label}</Label>
+      <Select value={value} onValueChange={onChange} disabled={disabled}>
+        <SelectTrigger id={id} className="w-full">
+          <SelectValue placeholder="Select a zone" />
+        </SelectTrigger>
+        <SelectContent>
+          {zones.map((z) => (
+            <SelectItem key={z.id} value={String(z.id)}>
+              {z.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
+function ZoneLaneDialog({
+  lane,
+  zones,
+  onClose,
+}: {
+  lane: ZoneLane | null;
+  zones: Zone[];
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [origin, setOrigin] = useState(lane ? String(lane.origin_zone_id) : "");
+  const [destination, setDestination] = useState(lane ? String(lane.destination_zone_id) : "");
+  const [firstKg, setFirstKg] = useState(lane?.first_kg ?? "");
+  const [afterKg, setAfterKg] = useState(lane?.after_kg ?? "");
+  const [isActive, setIsActive] = useState(lane?.is_active ?? true);
+  const pairMissing = !lane && (!origin || !destination);
+
+  const save = useMutation({
+    // Decimal strings, as for zones: a price must not round-trip through a float.
+    mutationFn: () =>
+      lane
+        ? updateZoneLane(lane.id, { first_kg: firstKg, after_kg: afterKg, is_active: isActive })
+        : createZoneLane({
+            origin_zone_id: Number(origin),
+            destination_zone_id: Number(destination),
+            first_kg: firstKg,
+            after_kg: afterKg,
+          }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["geo-zone-lanes"] });
+      toast.success(lane ? "Lane updated" : "Lane created");
+      onClose();
+    },
+    onError: (err) => toast.error(getErrorMessage(err, "Could not save the lane")),
+  });
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!pairMissing) save.mutate();
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>{lane ? "Edit lane" : "New zone lane"}</DialogTitle>
+            <DialogDescription>
+              New rates apply to quotes from now on. Confirmed quotes and booked parcels keep
+              their price.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <ZoneSelect
+                id="lane_origin"
+                label="From zone (outlet)"
+                value={origin}
+                zones={zones}
+                disabled={lane !== null}
+                onChange={setOrigin}
+              />
+              <ZoneSelect
+                id="lane_destination"
+                label="To zone (customer)"
+                value={destination}
+                zones={zones}
+                disabled={lane !== null}
+                onChange={setDestination}
+              />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-2">
+                <Label htmlFor="lane_first_kg">First kg (LKR)</Label>
+                <Input
+                  id="lane_first_kg"
+                  required
+                  inputMode="decimal"
+                  pattern={RATE_PATTERN}
+                  value={firstKg}
+                  onChange={(e) => setFirstKg(e.target.value)}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="lane_after_kg">Each kg after (LKR)</Label>
+                <Input
+                  id="lane_after_kg"
+                  required
+                  inputMode="decimal"
+                  pattern={RATE_PATTERN}
+                  value={afterKg}
+                  onChange={(e) => setAfterKg(e.target.value)}
+                />
+              </div>
+            </div>
+            {lane && (
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={isActive}
+                  onChange={(e) => setIsActive(e.target.checked)}
+                />
+                Active — unticking falls back to the destination zone&apos;s rate
+              </label>
+            )}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose} disabled={save.isPending}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={save.isPending || pairMissing}>
+              {save.isPending ? "Saving…" : "Save lane"}
             </Button>
           </DialogFooter>
         </form>

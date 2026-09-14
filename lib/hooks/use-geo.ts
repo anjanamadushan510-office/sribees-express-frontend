@@ -6,6 +6,7 @@ import {
   listPostalCities,
   listPostalCityRegions,
   listZones,
+  listZoneLanes,
   updatePostalCity,
 } from "@/lib/api/admin-geo";
 import type {
@@ -16,6 +17,10 @@ import type {
 
 export function useGeoZones() {
   return useQuery({ queryKey: ["geo-zones"], queryFn: listZones });
+}
+
+export function useZoneLanes() {
+  return useQuery({ queryKey: ["geo-zone-lanes"], queryFn: listZoneLanes });
 }
 
 export function useGeoBranches() {

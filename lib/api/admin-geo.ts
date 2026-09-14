@@ -11,6 +11,9 @@ import type {
   PostalCityZoneAssign,
   Zone,
   ZoneCreate,
+  ZoneLane,
+  ZoneLaneCreate,
+  ZoneLaneUpdate,
 } from "@/types/admin-geo";
 
 /**
@@ -36,6 +39,20 @@ export async function updateZone(
   payload: Partial<ZoneCreate> & { is_active?: boolean }
 ): Promise<Zone> {
   const { data } = await api.patch<Zone>(`/geo/zones/${zoneId}`, payload);
+  return data;
+}
+
+// --- Zone lanes --------------------------------------------------------------
+export const listZoneLanes = () => get<ZoneLane[]>("/geo/zone-lanes");
+
+/** 409 when the origin/destination pair already has a lane — edit that one. */
+export async function createZoneLane(payload: ZoneLaneCreate): Promise<ZoneLane> {
+  const { data } = await api.post<ZoneLane>("/geo/zone-lanes", payload);
+  return data;
+}
+
+export async function updateZoneLane(laneId: number, payload: ZoneLaneUpdate): Promise<ZoneLane> {
+  const { data } = await api.patch<ZoneLane>(`/geo/zone-lanes/${laneId}`, payload);
   return data;
 }
 

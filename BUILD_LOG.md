@@ -1143,3 +1143,39 @@ this list is for scope/prioritization, not a full field spec.
   now-unblocked flows (operation dashboard, bucket-close, invoice printing) end-to-end again;
   (c) the ID-photo upload flow on `/admin/clients/[id]`'s Settings tab, flagged out-of-scope
   back in the original `/admin/clients` session and never revisited.
+
+- **Session (2026-09-13) — pickup dispatch board + zone lanes.** Two new admin
+  surfaces for the postal-city delivery lifecycle (see the backend's BUILD_LOG
+  entry of the same date and `docs/ECOMMERCE_API.md` §6/§6a/§7).
+
+  - `/admin/dispatch` (`app/admin/(portal)/dispatch/page.tsx`, nav: Operations →
+    Pickup Dispatch). Left rail lists pickup postal cities with awaiting/scheduled
+    counts (`GET /fleet/dispatch/pickup-postal-cities`, polled every 60s — a board
+    that never refreshes sends two riders to the same area). Picking one lists its
+    parcels (`GET /fleet/dispatch/pickups`) with weight, COD vs prepaid, charge and
+    rider. Tick the pending ones, choose a rider, assign in one call
+    (`POST /fleet/dispatch/pickups/assign`, server cap 200 per batch, mirrored in
+    `MAX_DISPATCH_BATCH`). Only `pending` rows are tickable — re-assigning a
+    scheduled parcel is a different decision this endpoint does not take.
+  - **Zone lanes** as a third tab on `/admin/locations`. A lane prices an (origin
+    zone → destination zone) pair; the origin/destination selects are disabled when
+    editing because the pair is the lane's identity (a duplicate is a 409). The
+    empty state says what happens without a lane — the destination zone's own rate
+    applies — because that is the thing a pricing admin needs to know.
+  - New files: `types/admin-dispatch.ts`, `lib/api/admin-dispatch.ts`,
+    `lib/hooks/use-admin-dispatch.ts`; `ZoneLane*` added to `types/admin-geo.ts`,
+    `lib/api/admin-geo.ts`, `lib/hooks/use-geo.ts`.
+  - Rates are decimal **strings** end to end, as for zones: a price must not
+    round-trip through a float.
+  - Verified with `npx tsc --noEmit` and `npx eslint` (both clean) **and in a
+    real browser**: `scripts/e2e-dispatch-board.mjs` (new, same shape as the other
+    e2e scripts) logs in as staff, picks an area, assigns every waiting parcel to a
+    rider, confirms they move to Scheduled with the rider named, and opens the Zone
+    lanes tab. Run against a local backend with parcels booked through
+    `POST /ecommerce/rates` + `/shipments`; screenshots land in
+    `scripts/qa-output/e2e-dispatch/`.
+  - **Pre-existing bug it surfaced:** after a staff login the dashboard calls
+    `GET /client-portal/order-statuses`, which 403s for a staff token — a console
+    error on every admin page load, unrelated to these screens. The e2e script
+    ignores 403s for that reason; worth fixing separately (add it to
+    `docs/API-GAPS.md` when someone picks it up).

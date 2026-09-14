@@ -26,6 +26,7 @@ import {
   Building,
   Navigation,
   FileSignature,
+  Route,
 } from "lucide-react";
 
 export interface NavItem {
@@ -80,6 +81,7 @@ export const adminNavSections: NavSection[] = [
     items: [
       { label: "Packages", href: "/admin/packages", icon: Boxes },
       { label: "Pickup Requests", href: "/admin/pickups", icon: Truck },
+      { label: "Pickup Dispatch", href: "/admin/dispatch", icon: Route },
       { label: "Drivers", href: "/admin/drivers", icon: Users },
       { label: "Manifests", href: "/admin/manifests", icon: FileStack },
       { label: "Order Clearing", href: "/admin/order-clearing", icon: CircleCheckBig },

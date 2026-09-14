@@ -20,6 +20,33 @@ export interface ZoneCreate {
 }
 
 /**
+ * GET /geo/zone-lanes — the price between two zones. A quote from an outlet in
+ * the origin zone to a postal city in the destination zone uses the lane when
+ * it is active, and falls back to the destination zone's own rate otherwise.
+ */
+export interface ZoneLane {
+  id: number;
+  origin_zone_id: number;
+  destination_zone_id: number;
+  first_kg: string;
+  after_kg: string;
+  is_active: boolean;
+}
+
+export interface ZoneLaneCreate {
+  origin_zone_id: number;
+  destination_zone_id: number;
+  first_kg: string;
+  after_kg: string;
+}
+
+export interface ZoneLaneUpdate {
+  first_kg?: string;
+  after_kg?: string;
+  is_active?: boolean;
+}
+
+/**
  * A Sri Lanka Post office town — the one vocabulary every address is written
  * in. `zone_id: null` means nobody delivers there yet; the whole national
  * directory (2,111 rows) is seeded, and delivery is rolled out district by
