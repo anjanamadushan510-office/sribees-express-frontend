@@ -2,21 +2,12 @@
 
 import { useMemo, useState } from "react";
 import { RotateCcw, Search } from "lucide-react";
-import { toast } from "sonner";
-import {
-  useAssignPostalCitiesToBranch,
-  useGeoBranches,
-  useGeoZones,
-  usePostalCities,
-  usePostalCityRegions,
-} from "@/lib/hooks/use-geo";
-import type { Branch, PostalCity, PostalCityRegion } from "@/types/admin-geo";
-import { getErrorMessage } from "@/lib/api/client";
+import { useGeoBranches, useGeoZones, usePostalCities, usePostalCityRegions } from "@/lib/hooks/use-geo";
+import type { PostalCity } from "@/types/admin-geo";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -24,14 +15,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 
 const ALL = "__all__";
 const NONE = "__none__";
@@ -40,13 +23,15 @@ const PER_PAGE = 50;
 /**
  * Rolling delivery out across the national postal city directory.
  *
- * Every one of the 2,111 postal cities is seeded, and none is delivered to until
- * it has a zone (which prices it) and a branch covers it (which routes it). An
- * unzoned postal city is left out of the merchant API's list and refused as an
- * order destination, so this screen is what stands between a seeded directory
- * and an address anyone can book to — which is why it leads with per-district
- * progress rather than an alphabetical list, and why both assignments are made a
- * district at a time.
+ * Every one of the 2,111 postal cities is seeded, and none is delivered to
+ * until it has a zone (which prices it) and a branch covers it (which routes
+ * it). An unzoned postal city is left out of the merchant API's list and
+ * refused as an order destination, so the "Rollout by district" card grid
+ * below is read-only progress, not an action screen: pricing is set from a
+ * zone's own editor and coverage from a branch's own editor (both search
+ * postal cities directly, no district step), leaving this screen to answer
+ * "where is the rollout at" rather than also be a second place to make either
+ * assignment.
  */
 export function PostalCitiesTab() {
   const [province, setProvince] = useState<string>(ALL);
@@ -56,7 +41,6 @@ export function PostalCitiesTab() {
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [offset, setOffset] = useState(0);
-  const [openRegion, setOpenRegion] = useState<PostalCityRegion | null>(null);
 
   const { data: regions } = usePostalCityRegions();
   const { data: zones } = useGeoZones();
@@ -136,8 +120,8 @@ export function PostalCitiesTab() {
           <CardTitle>Rollout by district</CardTitle>
           <p className="mt-1 text-sm text-muted-foreground">
             {totals.zoned.toLocaleString()} of {totals.total.toLocaleString()} postal cities
-            are priced, and {totals.covered.toLocaleString()} are covered by a branch.
-            Choose a district to price it or change which branch covers it.
+            are priced, and {totals.covered.toLocaleString()} are covered by a branch. Price a
+            zone or assign a branch from that zone&apos;s or branch&apos;s own editor.
           </p>
         </CardHeader>
         <CardContent>
@@ -145,11 +129,9 @@ export function PostalCitiesTab() {
             {(regions ?? []).map((region) => {
               const ready = region.zoned === region.total && region.covered === region.total;
               return (
-                <button
+                <div
                   key={`${region.province}-${region.district}`}
-                  type="button"
-                  onClick={() => setOpenRegion(region)}
-                  className="flex items-center justify-between rounded-lg border p-3 text-left text-sm transition-colors hover:bg-accent"
+                  className="flex items-center justify-between rounded-lg border p-3 text-sm"
                 >
                   <div>
                     <div className="font-medium">{region.district}</div>
@@ -169,7 +151,7 @@ export function PostalCitiesTab() {
                       {region.covered}/{region.total} covered
                     </div>
                   </div>
-                </button>
+                </div>
               );
             })}
           </div>
@@ -281,19 +263,6 @@ export function PostalCitiesTab() {
           </div>
         </div>
       )}
-
-      {openRegion && (
-        <RegionDialog
-          // The live row, so the counts in the dialog move as assignments land.
-          region={
-            (regions ?? []).find(
-              (r) => r.district === openRegion.district && r.province === openRegion.province
-            ) ?? openRegion
-          }
-          branches={branches ?? []}
-          onClose={() => setOpenRegion(null)}
-        />
-      )}
     </>
   );
 }
@@ -323,106 +292,5 @@ function FilterSelect({
         ))}
       </SelectContent>
     </Select>
-  );
-}
-
-/**
- * District-wide branch coverage. Pricing (which zone a postal city belongs
- * to) is deliberately not decided here — a district is an address-directory
- * grouping, not a pricing one; add postal cities to a zone directly from
- * that zone's own editor (see `ZoneDialog` on the Locations page's Zones
- * tab) instead. Branch coverage stays district-wide here since a branch
- * genuinely does serve a whole area at once.
- */
-function RegionDialog({
-  region,
-  branches,
-  onClose,
-}: {
-  region: PostalCityRegion;
-  branches: Branch[];
-  onClose: () => void;
-}) {
-  const [branchId, setBranchId] = useState<string>("");
-  const assignBranch = useAssignPostalCitiesToBranch();
-  const selection = { district: region.district, province: region.province };
-
-  async function applyBranch(detach: boolean) {
-    try {
-      const result = await assignBranch.mutateAsync({
-        ...selection,
-        branch_id: Number(branchId),
-        detach,
-      });
-      const name = branches.find((b) => String(b.id) === branchId)?.name ?? "the branch";
-      toast.success(
-        detach
-          ? `${result.updated} postal cities removed from ${name}`
-          : `${name} now covers ${result.updated} more postal cities`
-      );
-    } catch (error) {
-      toast.error(getErrorMessage(error, "Could not change the coverage"));
-    }
-  }
-
-  const busy = assignBranch.isPending;
-
-  return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{region.district}</DialogTitle>
-          <DialogDescription>
-            {region.total} postal cities in {region.province}: {region.zoned} priced,{" "}
-            {region.covered} covered by a branch.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="grid gap-6 py-2">
-          <section className="grid gap-2">
-            <Label htmlFor="region_branch">Branch coverage</Label>
-            <p className="text-xs text-muted-foreground">
-              Adding keeps whatever the branch already covers. A postal city may be
-              covered by more than one branch.
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <Select value={branchId} onValueChange={setBranchId}>
-                <SelectTrigger id="region_branch" className="min-w-40 flex-1">
-                  <SelectValue placeholder="Choose a branch" />
-                </SelectTrigger>
-                <SelectContent>
-                  {branches.map((b) => (
-                    <SelectItem key={b.id} value={String(b.id)}>
-                      {b.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button
-                type="button"
-                onClick={() => applyBranch(false)}
-                disabled={busy || branchId === ""}
-              >
-                Add district
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => applyBranch(true)}
-                disabled={busy || branchId === ""}
-              >
-                Remove
-              </Button>
-            </div>
-          </section>
-        </div>
-
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={onClose}>
-            Done
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }
