@@ -2,17 +2,17 @@
 
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Search, X } from "lucide-react";
+import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { createZone, createZoneLane, updateZone, updateZoneLane } from "@/lib/api/admin-geo";
 import { useAssignPostalCitiesToZone, useGeoZones, usePostalCities, useZoneLanes } from "@/lib/hooks/use-geo";
-import type { Zone, ZoneCreate, ZoneLane } from "@/types/admin-geo";
+import type { PostalCity, Zone, ZoneCreate, ZoneLane } from "@/types/admin-geo";
 import { getErrorMessage } from "@/lib/api/client";
 import { PageHeader } from "@/components/shared/page-header";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { PostalCityAssignmentEditor } from "@/components/shared/postal-city-assignment";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -235,86 +235,37 @@ function ZoneDialog({ zone, onClose }: { zone: Zone | null; onClose: () => void 
  * tab).
  */
 function ZonePostalCities({ zone }: { zone: Zone }) {
-  const [searchInput, setSearchInput] = useState("");
-  const [search, setSearch] = useState("");
   const assign = useAssignPostalCitiesToZone();
-
-  const results = usePostalCities({ search: search || undefined, limit: 8 });
   const inZone = usePostalCities({ zone_id: zone.id, limit: 100 });
 
-  async function add(postalCityId: number, name: string) {
+  async function add(city: PostalCity) {
     try {
-      await assign.mutateAsync({ postal_city_ids: [postalCityId], zone_id: zone.id });
-      toast.success(`${name} added to ${zone.name}`);
+      await assign.mutateAsync({ postal_city_ids: [city.id], zone_id: zone.id });
+      toast.success(`${city.name} added to ${zone.name}`);
     } catch (error) {
       toast.error(getErrorMessage(error, "Could not add this postal city"));
     }
   }
 
-  async function remove(postalCityId: number, name: string) {
+  async function remove(city: PostalCity) {
     try {
-      await assign.mutateAsync({ postal_city_ids: [postalCityId], zone_id: null });
-      toast.success(`${name} removed from ${zone.name}`);
+      await assign.mutateAsync({ postal_city_ids: [city.id], zone_id: null });
+      toast.success(`${city.name} removed from ${zone.name}`);
     } catch (error) {
       toast.error(getErrorMessage(error, "Could not remove this postal city"));
     }
   }
 
   return (
-    <div className="mt-2 border-t pt-4">
-      <Label className="mb-2 block">Postal cities in this zone</Label>
-      <div className="relative mb-2">
-        <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          className="pl-8"
-          placeholder="Search postal cities to add"
-          value={searchInput}
-          onChange={(e) => setSearchInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && setSearch(searchInput.trim())}
-        />
-      </div>
-      {search && (
-        <div className="mb-3 flex flex-wrap gap-2">
-          {results.isFetching && <span className="text-xs text-muted-foreground">Searching…</span>}
-          {results.data?.items.length === 0 && (
-            <span className="text-xs text-muted-foreground">No postal cities match.</span>
-          )}
-          {results.data?.items.map((c) => (
-            <Button
-              key={c.id}
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={c.zone_id === zone.id || assign.isPending}
-              onClick={() => add(c.id, c.name)}
-            >
-              <Plus className="mr-1 h-3 w-3" />
-              {c.name}
-              {c.district ? ` (${c.district})` : ""}
-            </Button>
-          ))}
-        </div>
-      )}
-      <div className="flex max-h-40 flex-wrap gap-2 overflow-y-auto">
-        {inZone.data?.items.length === 0 && (
-          <span className="text-xs text-muted-foreground">No postal cities in this zone yet.</span>
-        )}
-        {inZone.data?.items.map((c) => (
-          <Badge key={c.id} variant="secondary" className="gap-1 pr-1">
-            {c.name}
-            <button
-              type="button"
-              aria-label={`Remove ${c.name}`}
-              disabled={assign.isPending}
-              onClick={() => remove(c.id, c.name)}
-              className="rounded-full p-0.5 hover:bg-muted-foreground/20"
-            >
-              <X className="h-3 w-3" />
-            </button>
-          </Badge>
-        ))}
-      </div>
-    </div>
+    <PostalCityAssignmentEditor
+      label="Postal cities in this zone"
+      assignedCities={inZone.data?.items}
+      assignedLoading={inZone.isFetching && !inZone.data}
+      isPending={assign.isPending}
+      onAdd={add}
+      onRemove={remove}
+      emptyMessage="No postal cities in this zone yet."
+    />
   );
 }
 
