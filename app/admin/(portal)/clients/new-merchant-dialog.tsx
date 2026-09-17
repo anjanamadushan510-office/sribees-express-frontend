@@ -18,6 +18,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface Props {
   open: boolean;
@@ -49,6 +56,7 @@ const EMPTY = {
 export function NewMerchantDialog({ open, onOpenChange, onCreated }: Props) {
   const [form, setForm] = useState(EMPTY);
   const [postalCity, setPostalCity] = useState<PostalCityOption | null>(null);
+  const [weightBasisKg, setWeightBasisKg] = useState<"1" | "5" | "10">("1");
   const createMerchant = useCreateMerchant();
 
   function set(field: keyof typeof EMPTY, value: string) {
@@ -69,6 +77,7 @@ export function NewMerchantDialog({ open, onOpenChange, onCreated }: Props) {
         address: form.address.trim(),
         postal_city_id: postalCity.id,
         commission_percent: form.commission_percent || "0.00",
+        weight_basis_kg: Number(weightBasisKg) as 1 | 5 | 10,
         admin_name: form.admin_name.trim(),
         admin_email: form.admin_email.trim(),
         admin_password: form.admin_password,
@@ -76,6 +85,7 @@ export function NewMerchantDialog({ open, onOpenChange, onCreated }: Props) {
       toast.success(`${result.client.business_name} created`);
       setForm(EMPTY);
       setPostalCity(null);
+      setWeightBasisKg("1");
       onOpenChange(false);
       onCreated(result.client.id);
     } catch (error) {
@@ -148,14 +158,36 @@ export function NewMerchantDialog({ open, onOpenChange, onCreated }: Props) {
                 />
               </div>
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="commission_percent">Commission %</Label>
-              <Input
-                id="commission_percent"
-                inputMode="decimal"
-                value={form.commission_percent}
-                onChange={(e) => set("commission_percent", e.target.value)}
-              />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-2">
+                <Label htmlFor="commission_percent">Commission %</Label>
+                <Input
+                  id="commission_percent"
+                  inputMode="decimal"
+                  value={form.commission_percent}
+                  onChange={(e) => set("commission_percent", e.target.value)}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="weight_basis_kg">Pricing weight basis</Label>
+                <Select
+                  value={weightBasisKg}
+                  onValueChange={(v) => setWeightBasisKg(v as "1" | "5" | "10")}
+                >
+                  <SelectTrigger id="weight_basis_kg" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">Per 1 kg</SelectItem>
+                    <SelectItem value="5">Per 5 kg</SelectItem>
+                    <SelectItem value="10">Per 10 kg</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Every price quoted to this merchant — including the standard zone rate —
+                  is a &ldquo;first {weightBasisKg}kg&rdquo; price plus a per-kg rate after it.
+                </p>
+              </div>
             </div>
 
             <div className="mt-2 border-t pt-4">

@@ -20,6 +20,13 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { MerchantLoginsTab } from "@/components/admin/merchant-logins-tab";
 import { MerchantApiKeysTab } from "@/components/admin/merchant-api-keys-tab";
 
@@ -70,7 +77,7 @@ export default function AdminMerchantDetailPage() {
               <MerchantOutletsTab clientId={clientId} />
             </TabsContent>
             <TabsContent value="pricing">
-              <MerchantPricingTab clientId={clientId} />
+              <MerchantPricingTab clientId={clientId} weightBasisKg={merchant.weight_basis_kg} />
             </TabsContent>
             <TabsContent value="logins">
               <MerchantLoginsTab clientId={clientId} />
@@ -99,6 +106,9 @@ function MerchantDetailsForm({
     commission_percent: merchant.commission_percent,
   });
   const [postalCity, setPostalCity] = useState<PostalCityOption | null>(merchant.postal_city);
+  const [weightBasisKg, setWeightBasisKg] = useState<"1" | "5" | "10">(
+    String(merchant.weight_basis_kg) as "1" | "5" | "10"
+  );
   const update = useUpdateMerchant();
 
   async function save(event: React.FormEvent) {
@@ -113,6 +123,7 @@ function MerchantDetailsForm({
           business_name: form.business_name,
           email: form.email,
           commission_percent: form.commission_percent,
+          weight_basis_kg: Number(weightBasisKg) as 1 | 5 | 10,
           ...(address ? { address } : {}),
           ...(postalCity ? { postal_city_id: postalCity.id } : {}),
         },
@@ -170,6 +181,27 @@ function MerchantDetailsForm({
                     setForm((f) => ({ ...f, commission_percent: e.target.value }))
                   }
                 />
+              </div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-2">
+                <Label htmlFor="weight_basis_kg">Pricing weight basis</Label>
+                <Select
+                  value={weightBasisKg}
+                  onValueChange={(v) => setWeightBasisKg(v as "1" | "5" | "10")}
+                >
+                  <SelectTrigger id="weight_basis_kg" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">Per 1 kg</SelectItem>
+                    <SelectItem value="5">Per 5 kg</SelectItem>
+                    <SelectItem value="10">Per 10 kg</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Governs every price quoted to this merchant, including the standard zone rate.
+                </p>
               </div>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">

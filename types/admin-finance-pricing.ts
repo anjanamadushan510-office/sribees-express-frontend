@@ -28,3 +28,33 @@ export interface ClientZoneRateUpdate {
   after_kg?: string;
   is_active?: boolean;
 }
+
+/**
+ * A merchant's own rate for one (origin zone, destination zone) corridor —
+ * the most specific tier `price_delivery()` applies, ahead of both
+ * `ClientZoneRate` and the standard `ZoneLane`/`Zone`.
+ */
+export interface ClientZoneLaneRate {
+  id: number;
+  client_id: number;
+  origin_zone_id: number;
+  destination_zone_id: number;
+  first_kg: string;
+  after_kg: string;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface ClientZoneLaneRateCreate {
+  client_id: number;
+  origin_zone_id: number;
+  destination_zone_id: number;
+  first_kg: string;
+  after_kg: string;
+}
+
+export interface ClientZoneLaneRateUpdate {
+  first_kg?: string;
+  after_kg?: string;
+  is_active?: boolean;
+}

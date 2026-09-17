@@ -51,6 +51,10 @@ export interface Merchant {
   postal_city_id: number | null;
   postal_city: PostalCityRef | null;
   commission_percent: string;
+  /** The kg block this merchant's pricing is negotiated in — governs every
+   * price quoted to them, their own zone/zone-lane overrides and the
+   * standard rate alike. */
+  weight_basis_kg: 1 | 5 | 10;
   is_active: boolean;
 }
 
@@ -145,6 +149,8 @@ export interface CreateMerchantPayload {
   email: string;
   phone?: string | null;
   commission_percent: string;
+  /** Defaults to 1 (per-kg) server-side if omitted. */
+  weight_basis_kg?: 1 | 5 | 10;
   /** Required. The same address becomes the merchant's "Main" outlet. */
   address: string;
   postal_city_id: number;
@@ -162,6 +168,7 @@ export interface UpdateMerchantPayload {
   address?: string;
   postal_city_id?: number;
   commission_percent?: string;
+  weight_basis_kg?: 1 | 5 | 10;
   is_active?: boolean;
 }
 

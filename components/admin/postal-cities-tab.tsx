@@ -5,13 +5,12 @@ import { RotateCcw, Search } from "lucide-react";
 import { toast } from "sonner";
 import {
   useAssignPostalCitiesToBranch,
-  useAssignPostalCitiesToZone,
   useGeoBranches,
   useGeoZones,
   usePostalCities,
   usePostalCityRegions,
 } from "@/lib/hooks/use-geo";
-import type { Branch, PostalCity, PostalCityRegion, Zone } from "@/types/admin-geo";
+import type { Branch, PostalCity, PostalCityRegion } from "@/types/admin-geo";
 import { getErrorMessage } from "@/lib/api/client";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { Button } from "@/components/ui/button";
@@ -282,7 +281,6 @@ export function PostalCitiesTab() {
               (r) => r.district === openRegion.district && r.province === openRegion.province
             ) ?? openRegion
           }
-          zones={zones ?? []}
           branches={branches ?? []}
           onClose={() => setOpenRegion(null)}
         />
@@ -320,44 +318,25 @@ function FilterSelect({
 }
 
 /**
- * Both district-wide decisions in one place. They are separate actions on
- * purpose: pricing a district and choosing who serves it are made by different
- * people for different reasons, and one button doing both would change two
- * things when someone meant one.
+ * District-wide branch coverage. Pricing (which zone a postal city belongs
+ * to) is deliberately not decided here — a district is an address-directory
+ * grouping, not a pricing one; add postal cities to a zone directly from
+ * that zone's own editor (see `ZoneDialog` on the Locations page's Zones
+ * tab) instead. Branch coverage stays district-wide here since a branch
+ * genuinely does serve a whole area at once.
  */
 function RegionDialog({
   region,
-  zones,
   branches,
   onClose,
 }: {
   region: PostalCityRegion;
-  zones: Zone[];
   branches: Branch[];
   onClose: () => void;
 }) {
-  const [zoneId, setZoneId] = useState<string>("");
   const [branchId, setBranchId] = useState<string>("");
-  const assignZone = useAssignPostalCitiesToZone();
   const assignBranch = useAssignPostalCitiesToBranch();
   const selection = { district: region.district, province: region.province };
-
-  async function applyZone() {
-    try {
-      const result = await assignZone.mutateAsync({
-        ...selection,
-        zone_id: zoneId === NONE ? null : Number(zoneId),
-      });
-      toast.success(
-        zoneId === NONE
-          ? `Delivery stopped to ${result.updated} postal cities in ${region.district}`
-          : `${result.updated} postal cities in ${region.district} priced`
-      );
-      setZoneId("");
-    } catch (error) {
-      toast.error(getErrorMessage(error, "Could not set the zone"));
-    }
-  }
 
   async function applyBranch(detach: boolean) {
     try {
@@ -377,7 +356,7 @@ function RegionDialog({
     }
   }
 
-  const busy = assignZone.isPending || assignBranch.isPending;
+  const busy = assignBranch.isPending;
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -391,32 +370,6 @@ function RegionDialog({
         </DialogHeader>
 
         <div className="grid gap-6 py-2">
-          <section className="grid gap-2">
-            <Label htmlFor="region_zone">Pricing zone</Label>
-            <p className="text-xs text-muted-foreground">
-              Sets the zone of every postal city in the district, replacing any zone
-              already set within it.
-            </p>
-            <div className="flex gap-2">
-              <Select value={zoneId} onValueChange={setZoneId}>
-                <SelectTrigger id="region_zone" className="flex-1">
-                  <SelectValue placeholder="Choose a zone" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NONE}>Stop delivering here</SelectItem>
-                  {zones.map((z) => (
-                    <SelectItem key={z.id} value={String(z.id)}>
-                      {z.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button type="button" onClick={applyZone} disabled={busy || zoneId === ""}>
-                Apply
-              </Button>
-            </div>
-          </section>
-
           <section className="grid gap-2">
             <Label htmlFor="region_branch">Branch coverage</Label>
             <p className="text-xs text-muted-foreground">
