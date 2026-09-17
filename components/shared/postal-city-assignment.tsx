@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Plus, Search, X } from "lucide-react";
 import { usePostalCities } from "@/lib/hooks/use-geo";
 import type { PostalCity } from "@/types/admin-geo";
@@ -8,6 +8,18 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+
+/** Same 250ms/2-char debounce as `PostalCityPicker` — one search rhythm
+ * across the app rather than this editor requiring Enter while every other
+ * postal-city search here is live-as-you-type. */
+function useDebounced<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delayMs);
+    return () => clearTimeout(timer);
+  }, [value, delayMs]);
+  return debounced;
+}
 
 interface Props {
   label: string;
@@ -36,8 +48,9 @@ export function PostalCityAssignmentEditor({
   emptyMessage = "None yet.",
 }: Props) {
   const [searchInput, setSearchInput] = useState("");
-  const [search, setSearch] = useState("");
-  const results = usePostalCities({ search: search || undefined, limit: 8 });
+  const search = useDebounced(searchInput.trim(), 250);
+  const searching = search.length >= 2;
+  const results = usePostalCities({ search: searching ? search : undefined, limit: 8 });
   const assignedIds = new Set((assignedCities ?? []).map((c) => c.id));
 
   return (
@@ -50,13 +63,15 @@ export function PostalCityAssignmentEditor({
           placeholder="Search postal cities to add"
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && setSearch(searchInput.trim())}
         />
       </div>
-      {search && (
+      {searchInput.trim().length > 0 && searchInput.trim().length < 2 && (
+        <p className="mb-3 text-xs text-muted-foreground">Type at least 2 letters.</p>
+      )}
+      {searching && (
         <div className="mb-3 flex flex-wrap gap-2">
           {results.isFetching && <span className="text-xs text-muted-foreground">Searching…</span>}
-          {results.data?.items.length === 0 && (
+          {!results.isFetching && results.data?.items.length === 0 && (
             <span className="text-xs text-muted-foreground">No postal cities match.</span>
           )}
           {results.data?.items.map((c) => (
