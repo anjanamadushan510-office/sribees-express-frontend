@@ -21,7 +21,15 @@ const notHydrated = () => false;
 
 const schema = z.object({
   email: z.string().trim().email("Enter a valid email address"),
-  password: z.string().min(1, "Password is required"),
+  // A copy-pasted password commonly carries a leading/trailing space or
+  // newline picked up with the selection; trimming only the ends (never
+  // interior characters) before it reaches the API is standard practice
+  // (Google, GitHub, etc. do the same) and can't silently accept a wrong
+  // password since the account's real password is compared post-trim too.
+  password: z
+    .string()
+    .transform((v) => v.trim())
+    .pipe(z.string().min(1, "Password is required")),
 });
 type FormValues = z.infer<typeof schema>;
 

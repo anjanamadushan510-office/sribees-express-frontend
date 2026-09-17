@@ -11,11 +11,21 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
+// Trim leading/trailing whitespace before length-checking or comparing, the
+// same copy-paste-safety trim used at login — otherwise a stray trailing
+// space here becomes part of the saved password and *that* has to be
+// retyped exactly at every future login.
+const trimmedPassword = (message: string) =>
+  z
+    .string()
+    .transform((v) => v.trim())
+    .pipe(z.string().min(8, message));
+
 const schema = z
   .object({
-    current_password: z.string().min(8, "Minimum 8 characters"),
-    password: z.string().min(8, "Minimum 8 characters"),
-    password_confirmation: z.string().min(8, "Minimum 8 characters"),
+    current_password: trimmedPassword("Minimum 8 characters"),
+    password: trimmedPassword("Minimum 8 characters"),
+    password_confirmation: trimmedPassword("Minimum 8 characters"),
   })
   .refine((d) => d.password === d.password_confirmation, {
     message: "Passwords do not match",
