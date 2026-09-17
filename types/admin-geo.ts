@@ -52,6 +52,12 @@ export interface ZoneLaneUpdate {
  * directory (2,111 rows) is seeded, and delivery is rolled out district by
  * district by giving rows a zone.
  */
+/** The little a postal city's own row says about a branch covering it. */
+export interface PostalCityBranchRef {
+  id: number;
+  name: string;
+}
+
 export interface PostalCity {
   id: number;
   name: string;
@@ -59,6 +65,8 @@ export interface PostalCity {
   province: string | null;
   zone_id: number | null;
   is_active: boolean;
+  /** Empty until a branch covers it — possibly more than one. */
+  branches: PostalCityBranchRef[];
 }
 
 export interface PostalCityCreate {

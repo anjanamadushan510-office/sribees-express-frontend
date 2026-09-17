@@ -108,6 +108,15 @@ export function PostalCitiesTab() {
       cell: (r) =>
         zoneName(r.zone_id) ?? <span className="text-muted-foreground">Not delivered</span>,
     },
+    {
+      header: "Branch",
+      cell: (r) =>
+        r.branches.length > 0 ? (
+          r.branches.map((b) => b.name).join(", ")
+        ) : (
+          <span className="text-muted-foreground">Uncovered</span>
+        ),
+    },
   ];
 
   function reset() {
