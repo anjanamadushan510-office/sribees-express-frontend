@@ -11,6 +11,7 @@ import { searchStaffPostalCities } from "@/lib/api/dropdowns";
 import type { Merchant } from "@/types/identity";
 import { PostalCityPicker, type PostalCityOption } from "@/components/shared/postal-city-picker";
 import { MerchantOutletsTab } from "@/components/admin/merchant-outlets-tab";
+import { MerchantPricingTab } from "@/components/admin/merchant-pricing-tab";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -57,6 +58,7 @@ export default function AdminMerchantDetailPage() {
             <TabsList className="mb-4">
               <TabsTrigger value="details">Details</TabsTrigger>
               <TabsTrigger value="outlets">Outlets</TabsTrigger>
+              <TabsTrigger value="pricing">Pricing</TabsTrigger>
               <TabsTrigger value="logins">Portal logins</TabsTrigger>
               <TabsTrigger value="api-keys">API keys</TabsTrigger>
             </TabsList>
@@ -66,6 +68,9 @@ export default function AdminMerchantDetailPage() {
             </TabsContent>
             <TabsContent value="outlets">
               <MerchantOutletsTab clientId={clientId} />
+            </TabsContent>
+            <TabsContent value="pricing">
+              <MerchantPricingTab clientId={clientId} />
             </TabsContent>
             <TabsContent value="logins">
               <MerchantLoginsTab clientId={clientId} />

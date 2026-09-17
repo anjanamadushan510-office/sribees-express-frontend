@@ -12,6 +12,8 @@ export type { ClientOrder as AdminOrder, OrderStatus, OrderHistoryEntry } from "
 export interface AdminOrdersListParams extends ListRange {
   client_id?: number;
   status_key?: string;
+  /** Orders currently parked at one branch — the cross-zone handoff view. */
+  branch_id?: number;
 }
 
 /** Body for POST /shipments/orders/{id}/status. */

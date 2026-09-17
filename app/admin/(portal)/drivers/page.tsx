@@ -3,27 +3,53 @@
 import { useMemo, useState } from "react";
 import { Search, RotateCcw } from "lucide-react";
 import { useRiders } from "@/lib/hooks/use-admin-riders";
+import { useGeoBranches } from "@/lib/hooks/use-geo";
 import type { Rider } from "@/types/admin-rider";
 import { PageHeader } from "@/components/shared/page-header";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { RiderBranchesDialog } from "@/components/admin/rider-branches-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 
-const columns: Column<Rider>[] = [
-  { header: "Name", cell: (r) => <span className="font-medium">{r.name}</span> },
-  { header: "Email", cell: (r) => r.email },
-  { header: "Phone", cell: (r) => r.phone ?? "—" },
-  {
-    header: "Status",
-    cell: (r) => <StatusBadge status={r.is_active ? "Active" : "Inactive"} />,
-  },
-];
-
 export default function AdminDriversPage() {
   const [search, setSearch] = useState("");
+  const [editingBranches, setEditingBranches] = useState<Rider | null>(null);
   const { data: riders, isFetching, isError } = useRiders();
+  const { data: branches } = useGeoBranches();
+  const branchNameById = useMemo(
+    () => new Map((branches ?? []).map((b) => [b.id, b.name])),
+    [branches]
+  );
+
+  const columns: Column<Rider>[] = [
+    { header: "Name", cell: (r) => <span className="font-medium">{r.name}</span> },
+    { header: "Email", cell: (r) => r.email },
+    { header: "Phone", cell: (r) => r.phone ?? "—" },
+    {
+      header: "Branches",
+      cell: (r) =>
+        r.branch_ids.length === 0 ? (
+          <span className="text-muted-foreground">None</span>
+        ) : (
+          r.branch_ids.map((id) => branchNameById.get(id) ?? `#${id}`).join(", ")
+        ),
+    },
+    {
+      header: "Status",
+      cell: (r) => <StatusBadge status={r.is_active ? "Active" : "Inactive"} />,
+    },
+    {
+      header: "",
+      className: "text-right",
+      cell: (r) => (
+        <Button variant="outline" size="sm" onClick={() => setEditingBranches(r)}>
+          Assign branches
+        </Button>
+      ),
+    },
+  ];
 
   /*
     Filtering happens in the browser, and that is defensible only because
@@ -45,13 +71,14 @@ export default function AdminDriversPage() {
   return (
     <>
       {/*
-        No "Add driver" button and no edit dialog: a rider is a Staff row, and
-        this API has no staff create/update endpoint. The dialog used to exist
-        and would now fail on every save, which is worse than its absence.
+        No "Add driver" button and no name/email/phone edit dialog: a rider is
+        a Staff row, and this API has no staff create/update endpoint. Branch
+        assignment is its own fleet-owned relationship, though, with its own
+        endpoint — that one action is editable here.
       */}
       <PageHeader
         title="Drivers"
-        description="Riders registered on the fleet. Read-only until staff management exists in the API."
+        description="Riders registered on the fleet. Assign branches; other details are read-only until staff management exists in the API."
       />
 
       <Card className="mb-4">
@@ -102,6 +129,8 @@ export default function AdminDriversPage() {
           )}
         </>
       )}
+
+      <RiderBranchesDialog rider={editingBranches} onClose={() => setEditingBranches(null)} />
     </>
   );
 }

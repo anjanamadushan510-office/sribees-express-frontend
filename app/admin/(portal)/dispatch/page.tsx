@@ -8,17 +8,21 @@ import {
   useDispatchPickups,
   usePickupPostalCities,
 } from "@/lib/hooks/use-admin-dispatch";
-import { useRiders } from "@/lib/hooks/use-admin-riders";
+import { useAdminOrders } from "@/lib/hooks/use-admin-orders";
+import { useAssignRiderToOrder, useRiders } from "@/lib/hooks/use-admin-riders";
+import { useGeoBranches } from "@/lib/hooks/use-geo";
 import { getErrorMessage } from "@/lib/api/client";
 import { formatCurrency, formatDate } from "@/lib/format";
 import type { DispatchPickup, DispatchPickupParams } from "@/types/admin-dispatch";
 import { MAX_DISPATCH_BATCH } from "@/types/admin-dispatch";
+import type { ClientOrder } from "@/types/order";
 import { PageHeader } from "@/components/shared/page-header";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -29,6 +33,29 @@ import {
 
 type StatusKey = NonNullable<DispatchPickupParams["status_key"]>;
 
+export default function AdminDispatchPage() {
+  return (
+    <>
+      <PageHeader
+        title="Dispatch"
+        description="Send a rider to collect a merchant's parcels, or hand a cross-zone parcel to a local rider once it reaches its branch."
+      />
+      <Tabs defaultValue="pickups">
+        <TabsList>
+          <TabsTrigger value="pickups">Pickups</TabsTrigger>
+          <TabsTrigger value="branch-handoff">Branch handoff</TabsTrigger>
+        </TabsList>
+        <TabsContent value="pickups">
+          <PickupDispatchTab />
+        </TabsContent>
+        <TabsContent value="branch-handoff">
+          <BranchHandoffTab />
+        </TabsContent>
+      </Tabs>
+    </>
+  );
+}
+
 /**
  * Pickup dispatch board.
  *
@@ -37,7 +64,7 @@ type StatusKey = NonNullable<DispatchPickupParams["status_key"]>;
  * to one rider in a single call; the server moves them pending →
  * pickup_scheduled together or not at all.
  */
-export default function AdminDispatchPage() {
+function PickupDispatchTab() {
   const [areaId, setAreaId] = useState<number | null>(null);
   const [statusKey, setStatusKey] = useState<StatusKey>("pending");
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -159,10 +186,9 @@ export default function AdminDispatchPage() {
 
   return (
     <>
-      <PageHeader
-        title="Pickup Dispatch"
-        description="Parcels waiting to be collected, grouped by the postal city of the merchant outlet."
-      />
+      <p className="mb-4 text-sm text-muted-foreground">
+        Parcels waiting to be collected, grouped by the postal city of the merchant outlet.
+      </p>
 
       <div className="grid gap-4 lg:grid-cols-[18rem_1fr]">
         <Card className="h-fit">
@@ -293,6 +319,128 @@ export default function AdminDispatchPage() {
           )}
         </div>
       </div>
+    </>
+  );
+}
+
+/**
+ * Branch handoff board — the other side of the zone-aware routing rules in
+ * `transition_order_status`. A cross-zone parcel arrives at
+ * `received_at_destination` with a resolved `current_branch_id` and no rider
+ * (the collecting rider was cleared off it); this is where a local rider is
+ * assigned so it can move on to `out_for_delivery`. Same
+ * `POST /fleet/orders/{id}/assign-rider` call the Pickups tab already uses,
+ * one order at a time rather than a batch — a branch handoff is a trickle,
+ * not a morning rush.
+ */
+function BranchHandoffTab() {
+  const [branchId, setBranchId] = useState<string>("");
+  const { data: branches } = useGeoBranches();
+  const { data: riders, isLoading: ridersLoading } = useRiders();
+  const [riderSelection, setRiderSelection] = useState<Record<number, string>>({});
+  const assign = useAssignRiderToOrder();
+
+  const { data: page, isFetching, isError } = useAdminOrders({
+    status_key: "received_at_destination",
+    branch_id: branchId ? Number(branchId) : undefined,
+    limit: 100,
+  });
+  const orders = branchId ? page?.items : undefined;
+
+  async function handAssign(order: ClientOrder) {
+    const riderId = riderSelection[order.id];
+    if (!riderId) return;
+    try {
+      await assign.mutateAsync({ orderId: order.id, riderId: Number(riderId) });
+      toast.success(`${order.waybill_id ?? `#${order.id}`} handed to a rider`);
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Could not assign a rider"));
+    }
+  }
+
+  const columns: Column<ClientOrder>[] = [
+    {
+      header: "Waybill",
+      cell: (r) => <span className="font-medium">{r.waybill_id ?? `#${r.id}`}</span>,
+    },
+    { header: "Recipient", cell: (r) => r.recipient_name },
+    { header: "Address", cell: (r) => <span className="line-clamp-2 text-sm">{r.recipient_address}</span> },
+    { header: "Weight", className: "text-right", cell: (r) => `${Number(r.weight_kg)} kg` },
+    { header: "Charge", className: "text-right", cell: (r) => formatCurrency(r.delivery_charge) },
+    {
+      header: "Assign to",
+      cell: (r) => (
+        <div className="flex items-center gap-2">
+          <Select
+            value={riderSelection[r.id] ?? ""}
+            onValueChange={(value) => setRiderSelection((s) => ({ ...s, [r.id]: value }))}
+          >
+            <SelectTrigger className="w-40">
+              <SelectValue placeholder={ridersLoading ? "Loading…" : "Rider"} />
+            </SelectTrigger>
+            <SelectContent>
+              {riders
+                ?.filter((rider) => rider.is_active)
+                .map((rider) => (
+                  <SelectItem key={rider.id} value={String(rider.id)}>
+                    {rider.name}
+                  </SelectItem>
+                ))}
+            </SelectContent>
+          </Select>
+          <Button
+            size="sm"
+            disabled={!riderSelection[r.id] || assign.isPending}
+            onClick={() => handAssign(r)}
+          >
+            Assign
+          </Button>
+        </div>
+      ),
+    },
+  ];
+
+  return (
+    <>
+      <Card className="mb-4">
+        <CardContent className="flex flex-col gap-3 pt-6 sm:flex-row sm:items-end">
+          <div className="w-full space-y-1 sm:w-64">
+            <label className="text-xs font-medium text-muted-foreground">Branch</label>
+            <Select value={branchId} onValueChange={setBranchId}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Choose a branch" />
+              </SelectTrigger>
+              <SelectContent>
+                {(branches ?? []).map((branch) => (
+                  <SelectItem key={branch.id} value={String(branch.id)}>
+                    {branch.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
+
+      {isError ? (
+        <Card>
+          <CardContent className="py-10 text-center text-sm text-muted-foreground">
+            Couldn&apos;t load parcels waiting at this branch.
+          </CardContent>
+        </Card>
+      ) : (
+        <DataTable
+          columns={columns}
+          rows={orders}
+          isLoading={branchId !== "" && isFetching && !orders}
+          rowKey={(r) => r.id}
+          emptyMessage={
+            branchId === ""
+              ? "Choose a branch to see parcels waiting for a local rider."
+              : "Nothing waiting at this branch."
+          }
+        />
+      )}
     </>
   );
 }

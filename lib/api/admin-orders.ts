@@ -12,6 +12,7 @@ export async function listOrders(
     params: queryParams({
       client_id: params.client_id,
       status_key: params.status_key,
+      branch_id: params.branch_id,
       ...paging,
     }),
   });

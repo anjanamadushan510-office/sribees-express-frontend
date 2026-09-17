@@ -1,10 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  assignBranchesToRider,
   assignRiderToOrder,
   getRider,
+  getRiderBranches,
   getRiderLocation,
   listRiders,
 } from "@/lib/api/admin-riders";
+import type { RiderBranchAssign } from "@/types/admin-rider";
 
 /**
  * Riders are read-only here.
@@ -44,6 +47,25 @@ export function useAssignRiderToOrder() {
     onSuccess: (_order, { orderId }) => {
       queryClient.invalidateQueries({ queryKey: ["admin-orders"] });
       queryClient.invalidateQueries({ queryKey: ["admin-order", String(orderId)] });
+    },
+  });
+}
+
+export function useRiderBranches(riderId: number | null) {
+  return useQuery({
+    queryKey: ["admin-rider-branches", riderId],
+    queryFn: () => getRiderBranches(riderId as number),
+    enabled: riderId !== null,
+  });
+}
+
+export function useAssignBranchesToRider() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: RiderBranchAssign) => assignBranchesToRider(payload.rider_id, payload),
+    onSuccess: (_result, payload) => {
+      queryClient.invalidateQueries({ queryKey: ["admin-riders"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-rider-branches", payload.rider_id] });
     },
   });
 }
