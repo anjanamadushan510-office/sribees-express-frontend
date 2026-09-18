@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Plus, RotateCcw, Search } from "lucide-react";
+import { MapPin, Plus, RotateCcw, Search } from "lucide-react";
 import { useGeoBranches } from "@/lib/hooks/use-geo";
 import type { Branch } from "@/types/admin-geo";
 import { PageHeader } from "@/components/shared/page-header";
@@ -16,6 +16,21 @@ const columns: Column<Branch>[] = [
   { header: "Name", cell: (r) => <span className="font-medium">{r.name}</span> },
   { header: "Address", cell: (r) => r.address ?? "—" },
   { header: "Phone", cell: (r) => r.phone_no ?? "—" },
+  {
+    // Visible in the list, not just the edit dialog: an unpinned branch
+    // downgrades every rider handover to an address search, and that is only
+    // worth fixing if someone can see which branches are missing a pin.
+    header: "Pin",
+    cell: (r) =>
+      r.latitude != null && r.longitude != null ? (
+        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+          <MapPin className="size-3.5" />
+          {r.latitude.toFixed(4)}, {r.longitude.toFixed(4)}
+        </span>
+      ) : (
+        <span className="text-xs text-muted-foreground">Not set</span>
+      ),
+  },
   { header: "Postal cities", className: "text-right", cell: (r) => r.postal_city_count },
   {
     header: "Status",

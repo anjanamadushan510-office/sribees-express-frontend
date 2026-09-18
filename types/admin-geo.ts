@@ -133,6 +133,18 @@ export interface Branch {
   name: string;
   address: string | null;
   phone_no: string | null;
+  /**
+   * The depot's map pin. Always both or neither — the database enforces it
+   * (`ck_branches_coordinates_complete`) and the API rejects a half pair.
+   * Null for a branch nobody has pinned yet.
+   *
+   * Read by the rider app: a rider carrying a cross-zone parcel navigates to
+   * the branch it is handed over at, and a pin cannot be misread the way a
+   * free-text address handed to a maps search can — several Sri Lankan postal
+   * cities share a name.
+   */
+  latitude: number | null;
+  longitude: number | null;
   is_active: boolean;
   postal_city_count: number;
 }
@@ -141,4 +153,6 @@ export interface BranchCreate {
   name: string;
   address?: string | null;
   phone_no?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
 }

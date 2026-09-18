@@ -42,6 +42,25 @@ export function BranchDialog({ branch, onClose }: Props) {
   );
 }
 
+/**
+ * Reads a "latitude, longitude" pair, tolerating what actually lands on the
+ * clipboard: Google Maps' "6.927079, 79.861244", a space-separated pair, or
+ * the parenthesised form some share sheets produce. Returns null for anything
+ * it cannot read with confidence — including out-of-range values, which are
+ * nearly always a swapped pair or a stray digit rather than a real place.
+ */
+function parseCoordinates(raw: string): { lat: number; lng: number } | null {
+  const cleaned = raw.trim().replace(/[()]/g, "");
+  if (cleaned === "") return null;
+  const parts = cleaned.split(/[,\s]+/).filter(Boolean);
+  if (parts.length !== 2) return null;
+  const lat = Number(parts[0]);
+  const lng = Number(parts[1]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+  return { lat, lng };
+}
+
 function BranchForm({ branch, onClose }: { branch: Branch | null; onClose: () => void }) {
   const queryClient = useQueryClient();
   const [form, setForm] = useState<BranchCreate>({
@@ -50,10 +69,30 @@ function BranchForm({ branch, onClose }: { branch: Branch | null; onClose: () =>
     phone_no: branch?.phone_no ?? "",
   });
   const [isActive, setIsActive] = useState(branch?.is_active ?? true);
+  // Kept as one string, not two number inputs: nobody types a coordinate pair
+  // by hand. They copy "6.927079, 79.861244" out of Google Maps and paste it,
+  // so the field that accepts a paste is the field that gets used correctly.
+  const [coords, setCoords] = useState(
+    branch?.latitude != null && branch?.longitude != null
+      ? `${branch.latitude}, ${branch.longitude}`
+      : ""
+  );
+
+  const parsedCoords = parseCoordinates(coords);
+  const coordsError = coords.trim() !== "" && parsedCoords === null;
+
+  // Cleared field -> explicit nulls, which is how a pin gets removed. The API
+  // takes the pair or neither, never one half.
+  const coordPayload = {
+    latitude: parsedCoords?.lat ?? null,
+    longitude: parsedCoords?.lng ?? null,
+  };
 
   const save = useMutation({
     mutationFn: () =>
-      branch ? updateBranch(branch.id, { ...form, is_active: isActive }) : createBranch(form),
+      branch
+        ? updateBranch(branch.id, { ...form, ...coordPayload, is_active: isActive })
+        : createBranch({ ...form, ...coordPayload }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["geo-branches"] });
       toast.success(branch ? "Branch updated" : "Branch created");
@@ -66,6 +105,9 @@ function BranchForm({ branch, onClose }: { branch: Branch | null; onClose: () =>
     <form
       onSubmit={(e) => {
         e.preventDefault();
+        // A half-read coordinate would otherwise save as "no pin" silently,
+        // and the operator would believe they had pinned the branch.
+        if (coordsError) return;
         save.mutate();
       }}
     >
@@ -109,6 +151,31 @@ function BranchForm({ branch, onClose }: { branch: Branch | null; onClose: () =>
             onChange={(e) => setForm((f) => ({ ...f, phone_no: e.target.value }))}
           />
         </div>
+        <div className="grid gap-2">
+          <Label htmlFor="branch_coords">Map location</Label>
+          <Input
+            id="branch_coords"
+            placeholder="6.927079, 79.861244"
+            value={coords}
+            onChange={(e) => setCoords(e.target.value)}
+            aria-invalid={coordsError}
+            aria-describedby="branch_coords_help"
+          />
+          <p id="branch_coords_help" className="text-xs text-muted-foreground">
+            {coordsError ? (
+              <span className="text-destructive">
+                Enter as “latitude, longitude” — e.g. 6.927079, 79.861244.
+              </span>
+            ) : (
+              <>
+                Optional. Right-click the branch in Google Maps and paste the coordinates
+                here. Riders navigate to this pin when they drop a cross-zone parcel;
+                without it the app can only search the address, which finds the wrong town
+                when two share a name. Leave empty to remove the pin.
+              </>
+            )}
+          </p>
+        </div>
         {branch && (
           <label className="flex items-center gap-2 text-sm">
             <input
@@ -124,7 +191,7 @@ function BranchForm({ branch, onClose }: { branch: Branch | null; onClose: () =>
         <Button type="button" variant="outline" onClick={onClose} disabled={save.isPending}>
           Cancel
         </Button>
-        <Button type="submit" disabled={save.isPending}>
+        <Button type="submit" disabled={save.isPending || coordsError}>
           {save.isPending ? "Saving…" : branch ? "Save changes" : "Create branch"}
         </Button>
       </DialogFooter>
