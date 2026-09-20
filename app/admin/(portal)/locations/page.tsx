@@ -291,6 +291,16 @@ function ZoneLanesTab() {
     { header: "First kg", className: "text-right", cell: (r) => money(r.first_kg) },
     { header: "Each kg after", className: "text-right", cell: (r) => money(r.after_kg) },
     {
+      header: "Return first kg",
+      className: "text-right",
+      cell: (r) => money(r.return_first_kg),
+    },
+    {
+      header: "Return each kg after",
+      className: "text-right",
+      cell: (r) => money(r.return_after_kg),
+    },
+    {
       header: "Status",
       cell: (r) => <StatusBadge status={r.is_active ? "Active" : "Inactive"} />,
     },
@@ -382,19 +392,39 @@ function ZoneLaneDialog({
   const [destination, setDestination] = useState(lane ? String(lane.destination_zone_id) : "");
   const [firstKg, setFirstKg] = useState(lane?.first_kg ?? "");
   const [afterKg, setAfterKg] = useState(lane?.after_kg ?? "");
+  const [returnFirstKg, setReturnFirstKg] = useState(lane?.return_first_kg ?? "");
+  const [returnAfterKg, setReturnAfterKg] = useState(lane?.return_after_kg ?? "");
   const [isActive, setIsActive] = useState(lane?.is_active ?? true);
   const pairMissing = !lane && (!origin || !destination);
+
+  /**
+   * A new lane's return rate defaults to whatever was typed for delivery,
+   * until the admin edits it. Pre-filling rather than leaving it blank is the
+   * whole point: an empty return rate on a new corridor either blocks the save
+   * or, worse, saves as free — and "priced like a delivery" is a number
+   * somebody notices and corrects, which free is not.
+   */
+  const returnFirst = returnFirstKg || firstKg;
+  const returnAfter = returnAfterKg || afterKg;
 
   const save = useMutation({
     // Decimal strings, as for zones: a price must not round-trip through a float.
     mutationFn: () =>
       lane
-        ? updateZoneLane(lane.id, { first_kg: firstKg, after_kg: afterKg, is_active: isActive })
+        ? updateZoneLane(lane.id, {
+            first_kg: firstKg,
+            after_kg: afterKg,
+            return_first_kg: returnFirst,
+            return_after_kg: returnAfter,
+            is_active: isActive,
+          })
         : createZoneLane({
             origin_zone_id: Number(origin),
             destination_zone_id: Number(destination),
             first_kg: firstKg,
             after_kg: afterKg,
+            return_first_kg: returnFirst,
+            return_after_kg: returnAfter,
           }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["geo-zone-lanes"] });
@@ -463,6 +493,40 @@ function ZoneLaneDialog({
                 />
               </div>
             </div>
+            {/*
+              The reverse leg. Placeholders, not values — they show what will
+              be saved if these are left alone (the delivery rate) without
+              pretending the admin typed it, so the fields still read as
+              "not set yet" the next time somebody opens this corridor.
+            */}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-2">
+                <Label htmlFor="lane_return_first_kg">Return first kg (LKR)</Label>
+                <Input
+                  id="lane_return_first_kg"
+                  inputMode="decimal"
+                  pattern={RATE_PATTERN}
+                  placeholder={firstKg || "same as delivery"}
+                  value={returnFirstKg}
+                  onChange={(e) => setReturnFirstKg(e.target.value)}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="lane_return_after_kg">Return each kg after (LKR)</Label>
+                <Input
+                  id="lane_return_after_kg"
+                  inputMode="decimal"
+                  pattern={RATE_PATTERN}
+                  placeholder={afterKg || "same as delivery"}
+                  value={returnAfterKg}
+                  onChange={(e) => setReturnAfterKg(e.target.value)}
+                />
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              What this corridor costs a merchant when a parcel comes back to them.
+              Left blank, it matches the delivery rate above.
+            </p>
             {lane && (
               <label className="flex items-center gap-2 text-sm">
                 <input

@@ -38,6 +38,12 @@ export default function OrderDetailPage() {
   // always has one, whereas the history can be empty on a freshly created order.
   const currentStatus = order?.current_status.name ?? timeline[0]?.name ?? null;
 
+  // This row is the journey back, vs. this row has a journey back running
+  // against it. Both change what the page should say first, and they are
+  // never true at once.
+  const isReturn = order?.order_kind === "return";
+  const isBeingReturned = order?.current_status.key === "return_in_transit";
+
   return (
     <div className="mx-auto max-w-3xl">
       <Button asChild variant="ghost" size="sm" className="mb-4">
@@ -55,7 +61,7 @@ export default function OrderDetailPage() {
             <div>
               <h1 className="text-2xl font-bold tracking-tight">
                 {order.waybill_id
-                  ? `Waybill ${order.waybill_id}`
+                  ? `${isReturn ? "Return" : "Waybill"} ${order.waybill_id}`
                   : `Order #${order.id}`}
               </h1>
               {order.waybill_id && (
@@ -67,9 +73,42 @@ export default function OrderDetailPage() {
             {currentStatus && <StatusBadge status={currentStatus} />}
           </div>
 
+          {/*
+            Two different facts, and a merchant opening this page needs
+            whichever applies before they read anything else: this parcel is
+            on its way back to you, or this row *is* the journey back.
+          */}
+          {isReturn && (
+            <div className="mb-6 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm dark:border-amber-800 dark:bg-amber-950/40">
+              <p className="font-medium">This parcel is coming back to you.</p>
+              <p className="mt-1 text-muted-foreground">
+                {order.return_trigger === "failed_delivery"
+                  ? "It could not be delivered, so the customer never received it."
+                  : "The customer sent it back after delivery."}
+                {order.return_reason ? ` Reason: ${order.return_reason}` : ""}
+              </p>
+              <p className="mt-2 text-muted-foreground">
+                Our rider will ask you for a handover code when they arrive. It was sent to
+                you when this return was raised — if you cannot find it, ask support to
+                issue a new one.
+              </p>
+            </div>
+          )}
+          {isBeingReturned && (
+            <div className="mb-6 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm dark:border-amber-800 dark:bg-amber-950/40">
+              <p className="font-medium">A return is on its way back to you.</p>
+              <p className="mt-1 text-muted-foreground">
+                This parcel is being carried back. It has its own waybill and its own
+                tracking — the history below is this order&apos;s outward journey only.
+              </p>
+            </div>
+          )}
+
           <Card className="mb-6">
             <CardHeader>
-              <CardTitle className="text-base">Order details</CardTitle>
+              <CardTitle className="text-base">
+                {isReturn ? "Return details" : "Order details"}
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <dl className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
@@ -119,6 +158,39 @@ export default function OrderDetailPage() {
                 {order.handling && order.handling.length > 0 && (
                   <Detail label="Handling" className="sm:col-span-2">
                     {order.handling.join(", ")}
+                  </Detail>
+                )}
+                {isReturn && order.parent_order_id !== null && (
+                  <Detail label="Return of" className="sm:col-span-2">
+                    <Link
+                      href={`/shipments/${order.parent_order_id}`}
+                      className="underline underline-offset-4"
+                    >
+                      Order #{order.parent_order_id}
+                    </Link>
+                  </Detail>
+                )}
+                {isReturn && order.delivery_charge && (
+                  <Detail label="Return fee">
+                    {formatCurrency(order.delivery_charge)}
+                  </Detail>
+                )}
+                {/*
+                  A partial return. Rendered defensively — the manifest is
+                  whatever the booking supplied, and a malformed line should
+                  cost this row, not the page.
+                */}
+                {order.return_items && order.return_items.length > 0 && (
+                  <Detail label="Coming back" className="sm:col-span-2">
+                    <ul className="mt-1 space-y-0.5">
+                      {order.return_items.map((item, i) => (
+                        <li key={i}>
+                          {String(item.name ?? "Item")}
+                          {item.sku ? ` (${String(item.sku)})` : ""} ×{" "}
+                          {String(item.quantity ?? 1)}
+                        </li>
+                      ))}
+                    </ul>
                   </Detail>
                 )}
                 <Detail label="Placed">{formatDate(order.created_at)}</Detail>

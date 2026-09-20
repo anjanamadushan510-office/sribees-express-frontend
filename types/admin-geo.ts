@@ -30,6 +30,13 @@ export interface ZoneLane {
   destination_zone_id: number;
   first_kg: string;
   after_kg: string;
+  /**
+   * What the *reverse* leg of this corridor costs the merchant — the return
+   * fee, charged when a parcel goes back to them rather than to a customer.
+   * `Zone` has always carried this pair; lanes gained it with returns.
+   */
+  return_first_kg: string;
+  return_after_kg: string;
   is_active: boolean;
 }
 
@@ -38,11 +45,22 @@ export interface ZoneLaneCreate {
   destination_zone_id: number;
   first_kg: string;
   after_kg: string;
+  /**
+   * Optional on the wire, and *not* optional-meaning-zero: omitted, the API
+   * fills it with this lane's own delivery rate. A lane that silently returned
+   * parcels for free is the failure worth designing against — nobody notices a
+   * 0.00 until the month-end invoice. The form below pre-fills it instead of
+   * leaving it blank, for the same reason.
+   */
+  return_first_kg?: string;
+  return_after_kg?: string;
 }
 
 export interface ZoneLaneUpdate {
   first_kg?: string;
   after_kg?: string;
+  return_first_kg?: string;
+  return_after_kg?: string;
   is_active?: boolean;
 }
 

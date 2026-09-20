@@ -53,6 +53,23 @@ export interface ClientOrder {
   requested_delivery_window: string | null;
   handling: string[] | null;
   created_at: string;
+
+  /**
+   * Returns. `'forward'` and nulls on every ordinary parcel, including every
+   * one booked before returns existed.
+   *
+   * A return is a *second order* whose pickup address is this one's delivery
+   * address and vice versa — the journey back to you. It carries its own
+   * waybill (prefixed `SXR`) and its own fee, and this order's own history is
+   * left intact. A forward order with a return leg running against it sits in
+   * `return_in_transit` until the goods are back with you.
+   */
+  order_kind: "forward" | "return";
+  parent_order_id: number | null;
+  return_reason: string | null;
+  return_trigger: "failed_delivery" | "post_delivery" | null;
+  /** `[{sku, name, quantity}]` on a partial return; null means the whole parcel. */
+  return_items: Array<Record<string, unknown>> | null;
 }
 
 /** One entry of `GET /client-portal/orders/{id}/history`, oldest first. */
