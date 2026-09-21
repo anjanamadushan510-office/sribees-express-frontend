@@ -11,6 +11,15 @@ export interface ClientZoneRate {
   zone_id: number;
   first_kg: string;
   after_kg: string;
+  /**
+   * This merchant's negotiated **return** fee for the same scope — what they
+   * pay when a parcel comes back to them rather than reaching a customer.
+   * Read by `finance.price_return()` through the identical four-tier lookup
+   * `price_delivery()` uses, so a merchant with a delivery override but no
+   * return override is not silently priced off the standard card.
+   */
+  return_first_kg: string;
+  return_after_kg: string;
   is_active: boolean;
   created_at: string;
 }
@@ -21,11 +30,21 @@ export interface ClientZoneRateCreate {
   zone_id: number;
   first_kg: string;
   after_kg: string;
+  /**
+   * Optional, and not optional-meaning-zero: omitted, the API stores this
+   * card's own delivery rate. A rate card that silently returned parcels for
+   * free is the failure worth designing against — nobody notices a 0.00 until
+   * the month-end invoice.
+   */
+  return_first_kg?: string;
+  return_after_kg?: string;
 }
 
 export interface ClientZoneRateUpdate {
   first_kg?: string;
   after_kg?: string;
+  return_first_kg?: string;
+  return_after_kg?: string;
   is_active?: boolean;
 }
 
@@ -41,6 +60,15 @@ export interface ClientZoneLaneRate {
   destination_zone_id: number;
   first_kg: string;
   after_kg: string;
+  /**
+   * This merchant's negotiated **return** fee for the same scope — what they
+   * pay when a parcel comes back to them rather than reaching a customer.
+   * Read by `finance.price_return()` through the identical four-tier lookup
+   * `price_delivery()` uses, so a merchant with a delivery override but no
+   * return override is not silently priced off the standard card.
+   */
+  return_first_kg: string;
+  return_after_kg: string;
   is_active: boolean;
   created_at: string;
 }
@@ -51,10 +79,20 @@ export interface ClientZoneLaneRateCreate {
   destination_zone_id: number;
   first_kg: string;
   after_kg: string;
+  /**
+   * Optional, and not optional-meaning-zero: omitted, the API stores this
+   * card's own delivery rate. A rate card that silently returned parcels for
+   * free is the failure worth designing against — nobody notices a 0.00 until
+   * the month-end invoice.
+   */
+  return_first_kg?: string;
+  return_after_kg?: string;
 }
 
 export interface ClientZoneLaneRateUpdate {
   first_kg?: string;
   after_kg?: string;
+  return_first_kg?: string;
+  return_after_kg?: string;
   is_active?: boolean;
 }

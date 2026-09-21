@@ -35,11 +35,27 @@ export interface DispatchPickup {
   rider_id: number | null;
   rider_name: string | null;
   created_at: string;
+
+  /**
+   * `forward` — collect from a merchant and deliver to a customer, which is
+   * every other row here.
+   *
+   * `return` — collect from a **customer** and carry the goods back to the
+   * merchant. The roles on the row are reversed: `client_name` is the merchant
+   * who will receive it, and `pickup_location_name` is the person handing it
+   * over. A return raised in a merchant's own system lands on this board with
+   * no other announcement, so it has to be readable as one at a glance.
+   */
+  order_kind: "forward" | "return";
+  return_trigger: "failed_delivery" | "post_delivery" | null;
+  /** The forward waybill — the number actually printed on the parcel. */
+  parent_waybill_id: string | null;
 }
 
 export interface DispatchPickupParams {
   pickup_postal_city_id?: number;
   status_key?: "pending" | "pickup_scheduled";
+  order_kind?: "forward" | "return";
 }
 
 /** POST /fleet/dispatch/pickups/assign — at most 200 orders per call. */

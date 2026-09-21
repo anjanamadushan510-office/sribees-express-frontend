@@ -88,6 +88,16 @@ function ZoneRatesSection({ clientId, weightBasisKg }: TabProps) {
     },
     { header: "Each kg after", className: "text-right", cell: (r) => formatCurrency(r.after_kg) },
     {
+      header: `Return first ${weightBasisKg}kg`,
+      className: "text-right",
+      cell: (r) => formatCurrency(r.return_first_kg),
+    },
+    {
+      header: "Return each kg after",
+      className: "text-right",
+      cell: (r) => formatCurrency(r.return_after_kg),
+    },
+    {
       header: "Status",
       cell: (r) => <StatusBadge status={r.is_active ? "Active" : "Off"} />,
     },
@@ -172,6 +182,18 @@ function RateDialog({
   const [zoneId, setZoneId] = useState(rate ? String(rate.zone_id) : "");
   const [firstKg, setFirstKg] = useState(rate?.first_kg ?? "");
   const [afterKg, setAfterKg] = useState(rate?.after_kg ?? "");
+  const [returnFirstKg, setReturnFirstKg] = useState(rate?.return_first_kg ?? "");
+  const [returnAfterKg, setReturnAfterKg] = useState(rate?.return_after_kg ?? "");
+
+  /**
+   * An omitted return rate becomes whatever was typed for delivery. Blank is
+   * the dangerous value here, not a wrong one: a merchant whose return rate
+   * saves as 0.00 ships every returned parcel free and nobody finds out until
+   * the invoice, whereas "priced like a delivery" is a number an admin sees
+   * and corrects.
+   */
+  const returnFirst = returnFirstKg || firstKg;
+  const returnAfter = returnAfterKg || afterKg;
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -181,13 +203,23 @@ function RateDialog({
     }
     try {
       if (rate) {
-        await update.mutateAsync({ id: rate.id, payload: { first_kg: firstKg, after_kg: afterKg } });
+        await update.mutateAsync({
+          id: rate.id,
+          payload: {
+            first_kg: firstKg,
+            after_kg: afterKg,
+            return_first_kg: returnFirst,
+            return_after_kg: returnAfter,
+          },
+        });
       } else {
         await upsert.mutateAsync({
           client_id: clientId,
           zone_id: Number(zoneId),
           first_kg: firstKg,
           after_kg: afterKg,
+          return_first_kg: returnFirst,
+          return_after_kg: returnAfter,
         });
       }
       toast.success(rate ? "Override updated" : "Override added");
@@ -251,6 +283,41 @@ function RateDialog({
                 />
               </div>
             </div>
+            {/*
+              The reverse leg. Placeholders rather than values, so the inputs
+              still read as "not set for this merchant yet" while showing what
+              will be saved if they are left alone.
+            */}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-2">
+                <Label htmlFor="rate_return_first_kg">
+                  Return first {weightBasisKg}kg (LKR)
+                </Label>
+                <Input
+                  id="rate_return_first_kg"
+                  inputMode="decimal"
+                  pattern={RATE_PATTERN}
+                  placeholder={firstKg || "same as delivery"}
+                  value={returnFirstKg}
+                  onChange={(e) => setReturnFirstKg(e.target.value)}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="rate_return_after_kg">Return each kg after (LKR)</Label>
+                <Input
+                  id="rate_return_after_kg"
+                  inputMode="decimal"
+                  pattern={RATE_PATTERN}
+                  placeholder={afterKg || "same as delivery"}
+                  value={returnAfterKg}
+                  onChange={(e) => setReturnAfterKg(e.target.value)}
+                />
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              What this merchant pays when a parcel comes back to them instead of reaching the
+              customer. Left blank, it matches their delivery rate above.
+            </p>
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose} disabled={pending}>
@@ -300,6 +367,16 @@ function ZoneLaneRatesSection({ clientId, weightBasisKg }: TabProps) {
       cell: (r) => formatCurrency(r.first_kg),
     },
     { header: "Each kg after", className: "text-right", cell: (r) => formatCurrency(r.after_kg) },
+    {
+      header: `Return first ${weightBasisKg}kg`,
+      className: "text-right",
+      cell: (r) => formatCurrency(r.return_first_kg),
+    },
+    {
+      header: "Return each kg after",
+      className: "text-right",
+      cell: (r) => formatCurrency(r.return_after_kg),
+    },
     {
       header: "Status",
       cell: (r) => <StatusBadge status={r.is_active ? "Active" : "Off"} />,
@@ -388,6 +465,18 @@ function LaneRateDialog({
   );
   const [firstKg, setFirstKg] = useState(rate?.first_kg ?? "");
   const [afterKg, setAfterKg] = useState(rate?.after_kg ?? "");
+  const [returnFirstKg, setReturnFirstKg] = useState(rate?.return_first_kg ?? "");
+  const [returnAfterKg, setReturnAfterKg] = useState(rate?.return_after_kg ?? "");
+
+  /**
+   * An omitted return rate becomes whatever was typed for delivery. Blank is
+   * the dangerous value here, not a wrong one: a merchant whose return rate
+   * saves as 0.00 ships every returned parcel free and nobody finds out until
+   * the invoice, whereas "priced like a delivery" is a number an admin sees
+   * and corrects.
+   */
+  const returnFirst = returnFirstKg || firstKg;
+  const returnAfter = returnAfterKg || afterKg;
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -397,7 +486,15 @@ function LaneRateDialog({
     }
     try {
       if (rate) {
-        await update.mutateAsync({ id: rate.id, payload: { first_kg: firstKg, after_kg: afterKg } });
+        await update.mutateAsync({
+          id: rate.id,
+          payload: {
+            first_kg: firstKg,
+            after_kg: afterKg,
+            return_first_kg: returnFirst,
+            return_after_kg: returnAfter,
+          },
+        });
       } else {
         await upsert.mutateAsync({
           client_id: clientId,
@@ -405,6 +502,8 @@ function LaneRateDialog({
           destination_zone_id: Number(destinationZoneId),
           first_kg: firstKg,
           after_kg: afterKg,
+          return_first_kg: returnFirst,
+          return_after_kg: returnAfter,
         });
       }
       toast.success(rate ? "Override updated" : "Override added");
@@ -485,6 +584,41 @@ function LaneRateDialog({
                 />
               </div>
             </div>
+            {/*
+              The reverse leg. Placeholders rather than values, so the inputs
+              still read as "not set for this merchant yet" while showing what
+              will be saved if they are left alone.
+            */}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-2">
+                <Label htmlFor="lane_rate_return_first_kg">
+                  Return first {weightBasisKg}kg (LKR)
+                </Label>
+                <Input
+                  id="lane_rate_return_first_kg"
+                  inputMode="decimal"
+                  pattern={RATE_PATTERN}
+                  placeholder={firstKg || "same as delivery"}
+                  value={returnFirstKg}
+                  onChange={(e) => setReturnFirstKg(e.target.value)}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="lane_rate_return_after_kg">Return each kg after (LKR)</Label>
+                <Input
+                  id="lane_rate_return_after_kg"
+                  inputMode="decimal"
+                  pattern={RATE_PATTERN}
+                  placeholder={afterKg || "same as delivery"}
+                  value={returnAfterKg}
+                  onChange={(e) => setReturnAfterKg(e.target.value)}
+                />
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              What this merchant pays when a parcel comes back to them instead of reaching the
+              customer. Left blank, it matches their delivery rate above.
+            </p>
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose} disabled={pending}>

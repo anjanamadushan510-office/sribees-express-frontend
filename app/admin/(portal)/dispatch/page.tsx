@@ -67,12 +67,19 @@ export default function AdminDispatchPage() {
 function PickupDispatchTab() {
   const [areaId, setAreaId] = useState<number | null>(null);
   const [statusKey, setStatusKey] = useState<StatusKey>("pending");
+  // "" means both. Returns are a minority of this board and a dispatcher
+  // planning a run of them should not have to read every row to find them.
+  const [kind, setKind] = useState<"" | "forward" | "return">("");
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [riderId, setRiderId] = useState("");
 
   const areas = usePickupPostalCities();
   const pickups = useDispatchPickups(
-    { pickup_postal_city_id: areaId ?? undefined, status_key: statusKey },
+    {
+      pickup_postal_city_id: areaId ?? undefined,
+      status_key: statusKey,
+      order_kind: kind || undefined,
+    },
     areaId !== null
   );
   const { data: riders, isLoading: ridersLoading } = useRiders();
@@ -89,6 +96,11 @@ function PickupDispatchTab() {
 
   const chooseArea = (id: number) => {
     setAreaId(id);
+    setSelected(new Set());
+  };
+
+  const chooseKind = (next: "" | "forward" | "return") => {
+    setKind(next);
     setSelected(new Set());
   };
 
@@ -144,16 +156,37 @@ function PickupDispatchTab() {
     {
       header: "Waybill",
       cell: (r) => (
-        <span className="font-medium">{r.waybill_id ?? `#${r.order_id}`}</span>
+        <div>
+          <span className="font-medium">{r.waybill_id ?? `#${r.order_id}`}</span>
+          {r.order_kind === "return" && (
+            <span className="ml-2 rounded-full border border-violet-400/50 bg-violet-500/10 px-1.5 py-0.5 text-[10px] font-bold tracking-wide text-violet-600 dark:text-violet-400">
+              RETURN
+            </span>
+          )}
+          {/* The SXR number exists only in our system; this is the one on the
+              label, which is what a dispatcher reconciles against paper. */}
+          {r.parent_waybill_id && (
+            <div className="text-xs text-muted-foreground">for {r.parent_waybill_id}</div>
+          )}
+        </div>
       ),
     },
     {
-      header: "Merchant / outlet",
+      header: "Collect from",
       cell: (r) => (
         <div className="text-sm">
-          <div>{r.client_name ?? `#${r.client_id}`}</div>
+          {/* On a return the person at the door is the customer and the
+              merchant is who it goes back to. Printing it the usual way round
+              sends a rider expecting a shop counter. */}
+          <div>
+            {r.order_kind === "return"
+              ? (r.pickup_location_name ?? "Customer")
+              : (r.client_name ?? `#${r.client_id}`)}
+          </div>
           <div className="text-muted-foreground">
-            {r.pickup_location_name ?? "—"}
+            {r.order_kind === "return"
+              ? `back to ${r.client_name ?? `#${r.client_id}`}`
+              : (r.pickup_location_name ?? "—")}
             {r.pickup_contact_phone ? ` · ${r.pickup_contact_phone}` : ""}
           </div>
         </div>
@@ -187,7 +220,7 @@ function PickupDispatchTab() {
   return (
     <>
       <p className="mb-4 text-sm text-muted-foreground">
-        Parcels waiting to be collected, grouped by the postal city of the merchant outlet.
+        Parcels waiting to be collected, grouped by the postal city they are collected from — a merchant outlet, or a customer&apos;s door when the goods are going back.
       </p>
 
       <div className="grid gap-4 lg:grid-cols-[18rem_1fr]">
@@ -262,6 +295,22 @@ function PickupDispatchTab() {
                   <SelectContent>
                     <SelectItem value="pending">Awaiting rider</SelectItem>
                     <SelectItem value="pickup_scheduled">Scheduled</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="w-full space-y-1 sm:w-40">
+                <label className="text-xs font-medium text-muted-foreground">Job type</label>
+                <Select
+                  value={kind === "" ? "all" : kind}
+                  onValueChange={(v) => chooseKind(v === "all" ? "" : (v as "forward" | "return"))}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All</SelectItem>
+                    <SelectItem value="forward">Merchant pickups</SelectItem>
+                    <SelectItem value="return">Returns</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
