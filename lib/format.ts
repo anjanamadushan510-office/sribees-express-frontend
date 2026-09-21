@@ -1,4 +1,5 @@
 /** Formatting helpers shared across the app. */
+import { serverNow } from "@/lib/server-clock";
 
 /**
  * Every timestamp on every screen is rendered in Sri Lanka time.
@@ -56,7 +57,7 @@ export function todayInColombo(): string {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  }).format(new Date());
+  }).format(serverNow());
 }
 
 export function formatCurrency(

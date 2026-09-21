@@ -23,6 +23,7 @@ import type {
 } from "@/types/api";
 import { FeatureUnavailableError } from "@/lib/api/unavailable";
 import type { TokenPair } from "@/types/auth";
+import { recordServerDate } from "@/lib/server-clock";
 
 /**
  * Axios instance for the FastAPI backend.
@@ -86,8 +87,17 @@ interface RetriableConfig extends InternalAxiosRequestConfig {
 }
 
 api.interceptors.response.use(
-  (res) => res,
+  (res) => {
+    // Every reply carries the server's own `Date`. Learning the offset here
+    // means no screen has to trust this machine's clock for a rule the server
+    // decides — what "today" covers, most of all.
+    recordServerDate(res.headers?.date as string | undefined);
+    return res;
+  },
   async (error: AxiosError) => {
+    // A 4xx carries a Date header too, and an error is exactly when the clock
+    // is worth correcting.
+    recordServerDate(error.response?.headers?.date as string | undefined);
     const original = error.config as RetriableConfig | undefined;
     const status = error.response?.status;
 
