@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import dynamic from "next/dynamic";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { createBranch, updateBranch } from "@/lib/api/admin-geo";
@@ -41,6 +42,22 @@ export function BranchDialog({ branch, onClose }: Props) {
     </Dialog>
   );
 }
+
+/**
+ * Leaflet reaches for `window` the moment it is imported, so it cannot be in
+ * the server bundle at all — `ssr: false` keeps the whole module graph on the
+ * client. The placeholder holds the dialog's height so opening it does not
+ * jump once the map arrives.
+ */
+const MapLocationPicker = dynamic(
+  () => import("@/components/admin/map-location-picker").then((m) => m.MapLocationPicker),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-64 w-full animate-pulse rounded-md border bg-muted" />
+    ),
+  }
+);
 
 /**
  * Reads a "latitude, longitude" pair, tolerating what actually lands on the
@@ -168,13 +185,25 @@ function BranchForm({ branch, onClose }: { branch: Branch | null; onClose: () =>
               </span>
             ) : (
               <>
-                Optional. Right-click the branch in Google Maps and paste the coordinates
-                here. Riders navigate to this pin when they drop a cross-zone parcel;
-                without it the app can only search the address, which finds the wrong town
-                when two share a name. Leave empty to remove the pin.
+                Optional. Paste coordinates here, or mark the branch on the map below.
+                Riders navigate to this pin when they drop a cross-zone parcel; without it
+                the app can only search the address, which finds the wrong town when two
+                share a name. Leave empty to remove the pin.
               </>
             )}
           </p>
+          {/*
+            The map and the text field are two ways into the same value, not a
+            replacement for each other. Someone who already has the coordinates
+            pastes them; someone who only knows where the place *is* finds it
+            here. Picking on the map writes the field, so what gets saved is
+            always the thing on screen.
+          */}
+          <MapLocationPicker
+            latitude={parsedCoords?.lat ?? null}
+            longitude={parsedCoords?.lng ?? null}
+            onPick={(lat, lng) => setCoords(`${lat}, ${lng}`)}
+          />
         </div>
         {branch && (
           <label className="flex items-center gap-2 text-sm">
