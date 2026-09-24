@@ -42,73 +42,73 @@ function getStatusColorTheme(key: string, name: string): StatusTheme {
   if (k.includes("delivered") || n.includes("delivered")) {
     return {
       icon: PackageCheck,
-      bgGradient: "from-emerald-500 via-emerald-600 to-teal-700",
+      bgGradient: "from-[#689f38] via-[#7cb342] to-[#558b2f]",
     };
   }
   if (k.includes("failed") || n.includes("failed")) {
     return {
       icon: PackageX,
-      bgGradient: "from-rose-500 via-rose-600 to-red-700",
+      bgGradient: "from-[#b71c1c] via-[#c62828] to-[#880e4f]",
     };
   }
   if (k.includes("pending") || n.includes("pending")) {
     return {
       icon: Clock,
-      bgGradient: "from-amber-400 via-amber-500 to-yellow-600",
+      bgGradient: "from-[#1e88e5] via-[#2196f3] to-[#1565c0]",
     };
   }
   if (k.includes("picked") || n.includes("picked")) {
     return {
       icon: PackagePlus,
-      bgGradient: "from-violet-500 via-violet-600 to-indigo-700",
+      bgGradient: "from-[#f57c00] via-[#fb8c00] to-[#e65100]",
     };
   }
   if (k.includes("reschedul") || n.includes("reschedul")) {
     return {
       icon: CalendarClock,
-      bgGradient: "from-orange-400 via-orange-500 to-amber-600",
+      bgGradient: "from-[#fb8c00] via-[#f57c00] to-[#ef6c00]",
     };
   }
   if (k.includes("return_in_transit") || n.includes("return in transit")) {
     return {
       icon: Truck,
-      bgGradient: "from-indigo-500 via-blue-600 to-sky-700",
+      bgGradient: "from-[#6a1b9a] via-[#8e24aa] to-[#4a148c]",
     };
   }
   if (k.includes("returned_to_branch") || n.includes("returned to branch")) {
     return {
       icon: Building2,
-      bgGradient: "from-cyan-500 via-teal-600 to-emerald-700",
+      bgGradient: "from-[#00897b] via-[#26a69a] to-[#00695c]",
     };
   }
   if (k.includes("returned_to_client") || n.includes("returned to client")) {
     return {
       icon: PackageMinus,
-      bgGradient: "from-pink-500 via-rose-500 to-pink-700",
+      bgGradient: "from-[#ad1457] via-[#d81b60] to-[#880e4f]",
     };
   }
   if (k.includes("out_for_delivery") || n.includes("out for delivery")) {
     return {
       icon: Bike,
-      bgGradient: "from-teal-400 via-emerald-500 to-green-700",
+      bgGradient: "from-[#43a047] via-[#4caf50] to-[#2e7d32]",
     };
   }
   if (k.includes("sorting") || n.includes("sorting")) {
     return {
       icon: Warehouse,
-      bgGradient: "from-purple-500 via-purple-600 to-indigo-800",
+      bgGradient: "from-[#5e35b1] via-[#7e57c2] to-[#4527a0]",
     };
   }
   if (k.includes("dispatched") || n.includes("dispatched")) {
     return {
       icon: Plane,
-      bgGradient: "from-sky-400 via-blue-500 to-indigo-700",
+      bgGradient: "from-[#0288d1] via-[#03a9f4] to-[#01579b]",
     };
   }
 
   return {
     icon: Boxes,
-    bgGradient: "from-slate-600 via-slate-700 to-slate-800",
+    bgGradient: "from-[#455a64] via-[#546e7a] to-[#37474f]",
   };
 }
 
@@ -200,7 +200,7 @@ export default function AdminDashboardPage() {
             </CardContent>
           </Card>
 
-          {/* Grid of Status Cards with Vibrant Colors & Curved Wave Backgrounds */}
+          {/* Grid of Status Cards with Vibrant Colors, Dark Curved Waves & Translucent Pills */}
           {cards.length === 0 ? (
             <Card>
               <CardContent className="py-10 text-center text-sm text-muted-foreground">
@@ -212,50 +212,72 @@ export default function AdminDashboardPage() {
               {cards.map((c) => {
                 const theme = getStatusColorTheme(c.status_key, c.status_name);
                 const Icon = theme.icon;
-                const pct = totalOrders > 0 ? ((c.count / totalOrders) * 100).toFixed(1) : "0";
-                const pctNum = parseFloat(pct);
+                const pctNum = totalOrders > 0 ? (c.count / totalOrders) * 100 : 0;
+                const pctStr = pctNum % 1 === 0 ? pctNum.toFixed(0) : pctNum.toFixed(1);
 
                 return (
                   <Card
                     key={c.status_key}
                     className={`group relative overflow-hidden rounded-2xl border-0 bg-gradient-to-br ${theme.bgGradient} p-5 text-white shadow-md transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl`}
                   >
-                    {/* Top-Right Curved Wave Overlay */}
-                    <div className="absolute -top-10 -right-10 size-36 rounded-full bg-white/15 blur-xs pointer-events-none transition-transform duration-500 group-hover:scale-110" />
+                    {/* Top-Left Dark Wave Shape */}
+                    <div className="absolute -top-20 -left-20 size-56 rounded-full bg-black/20 pointer-events-none transition-transform duration-500 group-hover:scale-105" />
 
-                    {/* Bottom-Left Curved Overlay */}
-                    <div className="absolute -bottom-8 -left-8 size-28 rounded-full bg-white/15 blur-xs pointer-events-none transition-transform duration-500 group-hover:scale-110" />
+                    {/* Top-Right Arc Overlay */}
+                    <div className="absolute -top-12 -right-12 size-40 rounded-full border border-white/20 pointer-events-none transition-transform duration-500 group-hover:scale-105" />
+
+                    {/* Bottom-Right Curved Overlay */}
+                    <div className="absolute -bottom-14 -right-14 size-44 rounded-full bg-white/10 pointer-events-none transition-transform duration-500 group-hover:scale-105" />
 
                     <CardContent className="relative z-10 p-0">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="space-y-1">
-                          <p className="text-xs font-bold uppercase tracking-wider text-white/85 drop-shadow-xs">
-                            {c.status_name}
-                          </p>
-                          <p className="text-4xl font-extrabold tracking-tight tabular-nums text-white drop-shadow-sm">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="space-y-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <Icon className="size-4 text-white/90 shrink-0" />
+                            <p className="text-sm font-bold tracking-wide text-white drop-shadow-xs truncate">
+                              {c.status_name}
+                            </p>
+                          </div>
+                          <p className="text-3xl font-extrabold tracking-tight tabular-nums text-white drop-shadow-sm">
                             {c.count.toLocaleString()}
                           </p>
+                          <div className="pt-1.5">
+                            <span className="inline-block rounded-md bg-black/20 backdrop-blur-xs px-2.5 py-1 text-xs font-semibold text-white/90 shadow-xs border border-white/10">
+                              Total Count : {c.count.toLocaleString()}
+                            </span>
+                          </div>
                         </div>
 
-                        <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-white/20 backdrop-blur-md border border-white/30 text-white shadow-inner group-hover:scale-110 group-hover:bg-white/30 transition-all duration-300">
-                          <Icon className="size-6 drop-shadow-xs" />
-                        </div>
-                      </div>
-
-                      {/* Share Progress Indicator */}
-                      <div className="mt-5 space-y-1.5 border-t border-white/20 pt-3">
-                        <div className="flex items-center justify-between text-[11px]">
-                          <span className="font-semibold text-white/80">Share of total</span>
-                          <span className="font-extrabold tabular-nums text-white">{pct}%</span>
-                        </div>
-
-                        <div className="h-1.5 w-full overflow-hidden rounded-full bg-black/25 p-[1px]">
-                          <div
-                            className="h-full rounded-full bg-white transition-all duration-500 shadow-sm"
-                            style={{
-                              width: `${Math.min(100, Math.max(pctNum > 0 ? 3 : 0, pctNum))}%`,
-                            }}
-                          />
+                        {/* Circular Percentage Ring Indicator */}
+                        <div className="relative flex size-16 shrink-0 items-center justify-center">
+                          <svg className="size-full -rotate-90" viewBox="0 0 36 36">
+                            {/* Background Track Circle */}
+                            <circle
+                              cx="18"
+                              cy="18"
+                              r="14"
+                              fill="none"
+                              className="stroke-black/30"
+                              strokeWidth="4"
+                            />
+                            {/* Animated Progress Circle */}
+                            <circle
+                              cx="18"
+                              cy="18"
+                              r="14"
+                              fill="none"
+                              className="stroke-white transition-all duration-700 ease-out"
+                              strokeWidth="4"
+                              strokeDasharray="87.96"
+                              strokeDashoffset={
+                                87.96 - (87.96 * Math.min(100, Math.max(0, pctNum))) / 100
+                              }
+                              strokeLinecap="round"
+                            />
+                          </svg>
+                          <span className="absolute text-xs font-extrabold text-white tabular-nums drop-shadow-xs">
+                            {pctStr}%
+                          </span>
                         </div>
                       </div>
                     </CardContent>

@@ -123,7 +123,7 @@ export function PortalShell({ variant, portalLabel, children }: PortalShellProps
 
       <div className="flex flex-1">
         {/* Desktop sidebar */}
-        <aside className="hidden w-64 shrink-0 flex-col border-r bg-background lg:flex">
+        <aside className="sticky top-[3.875rem] hidden h-[calc(100vh-3.875rem)] w-64 shrink-0 flex-col border-r bg-background lg:flex">
           <SidebarBody sections={sections} pathname={pathname} />
         </aside>
 
