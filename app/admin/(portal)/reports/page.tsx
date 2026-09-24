@@ -171,7 +171,7 @@ function AsyncReportsTab() {
       <GenerateReportPanel types={types ?? []} />
 
       <Card className="mb-4 mt-6">
-        <CardContent className="flex flex-col gap-3 pt-6 sm:flex-row sm:flex-wrap sm:items-end">
+        <CardContent className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
           <div className="min-w-[10rem] flex-1 space-y-1">
             <label className="text-xs font-medium text-muted-foreground">Search</label>
             <Input

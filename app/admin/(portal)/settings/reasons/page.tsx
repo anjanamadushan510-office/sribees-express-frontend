@@ -85,7 +85,7 @@ export default function AdminReasonsPage() {
       />
 
       <Card className="mb-4">
-        <CardContent className="flex flex-col gap-3 pt-6 sm:flex-row sm:items-end">
+        <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-end">
           <div className="flex-1 space-y-1">
             <label className="text-xs font-medium text-muted-foreground">Reason</label>
             <Input

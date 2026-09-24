@@ -50,7 +50,7 @@ export function SortingHoldOrdersTab() {
   return (
     <div className="mt-4 space-y-4">
       <Card>
-        <CardContent className="flex flex-col gap-3 pt-6 sm:flex-row sm:items-end">
+        <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-end">
           <div className="flex-1 space-y-1">
             <Label className="text-xs text-muted-foreground">Hold a waybill</Label>
             <Input
@@ -68,7 +68,7 @@ export function SortingHoldOrdersTab() {
       </Card>
 
       <Card>
-        <CardContent className="flex flex-col gap-3 pt-6 sm:flex-row sm:items-end">
+        <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-end">
           <div className="w-full space-y-1 sm:w-64">
             <Label className="text-xs text-muted-foreground">Layer</Label>
             <Combobox
