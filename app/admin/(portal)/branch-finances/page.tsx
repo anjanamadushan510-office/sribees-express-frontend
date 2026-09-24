@@ -128,7 +128,7 @@ function DepositsTab() {
   return (
     <>
       <Card className="mb-4 mt-4">
-        <CardContent className="flex flex-col gap-3 pt-6 sm:flex-row sm:items-end">
+        <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-end">
           <div className="flex-1 space-y-1">
             <label className="text-xs font-medium text-muted-foreground">Branch</label>
             <Input
@@ -201,7 +201,7 @@ function ExpenseApprovalsTab() {
   return (
     <>
       <Card className="mb-4 mt-4">
-        <CardContent className="flex flex-col gap-3 pt-6 sm:flex-row sm:items-end">
+        <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-end">
           <div className="w-full space-y-1 sm:w-48">
             <label className="text-xs font-medium text-muted-foreground">Status</label>
             <Select

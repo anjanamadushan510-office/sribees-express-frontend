@@ -223,71 +223,96 @@ function PickupDispatchTab() {
         Parcels waiting to be collected, grouped by the postal city they are collected from — a merchant outlet, or a customer&apos;s door when the goods are going back.
       </p>
 
-      <div className="grid gap-4 lg:grid-cols-[18rem_1fr]">
-        <Card className="h-fit">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-base">Pickup areas</CardTitle>
+      {/* Top Row: Pickup Areas + Dispatch Controls */}
+      <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-12">
+        {/* Pickup Areas Card */}
+        <Card className="flex flex-col justify-between lg:col-span-5">
+          <CardHeader className="flex flex-row items-center justify-between pb-3">
+            <div>
+              <CardTitle className="text-base font-semibold">Pickup areas</CardTitle>
+              <p className="text-xs text-muted-foreground">Select a city to view pickups</p>
+            </div>
             <Button
-              variant="ghost"
-              size="sm"
+              variant="outline"
+              size="icon"
+              className="size-8"
               aria-label="Refresh areas"
               onClick={() => areas.refetch()}
               disabled={areas.isFetching}
             >
-              <RefreshCw className="size-4" />
+              <RefreshCw className={`size-4 ${areas.isFetching ? "animate-spin" : ""}`} />
             </Button>
           </CardHeader>
-          <CardContent className="space-y-1">
+          <CardContent className="max-h-56 flex-1 space-y-1 overflow-y-auto pr-1">
             {areas.isError && (
-              <p className="text-sm text-destructive">Couldn&apos;t load pickup areas.</p>
+              <p className="py-2 text-sm text-destructive">Couldn&apos;t load pickup areas.</p>
             )}
             {areas.data?.length === 0 && (
-              <p className="text-sm text-muted-foreground">Nothing waiting for pickup.</p>
+              <p className="py-2 text-sm text-muted-foreground">Nothing waiting for pickup.</p>
             )}
             {areas.data?.map((a) => (
               <button
                 key={a.postal_city_id}
                 type="button"
                 onClick={() => chooseArea(a.postal_city_id)}
-                className={`flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm hover:bg-muted ${
-                  a.postal_city_id === areaId ? "bg-muted font-medium" : ""
+                className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition-colors hover:bg-accent ${
+                  a.postal_city_id === areaId
+                    ? "border border-border bg-accent/80 font-medium text-accent-foreground"
+                    : "text-muted-foreground"
                 }`}
               >
-                <span className="flex items-center gap-2">
-                  <MapPin className="size-4 text-muted-foreground" />
-                  <span>
-                    {a.name}
+                <span className="flex items-center gap-2.5 min-w-0">
+                  <MapPin
+                    className={`size-4 shrink-0 ${
+                      a.postal_city_id === areaId ? "text-primary" : "text-muted-foreground"
+                    }`}
+                  />
+                  <span className="truncate">
+                    <span className="font-medium text-foreground">{a.name}</span>
                     {a.district && (
-                      <span className="block text-xs text-muted-foreground">{a.district}</span>
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {a.district}
+                      </span>
                     )}
                   </span>
                 </span>
-                <span className="flex gap-1">
-                  {a.awaiting_rider > 0 && <Badge>{a.awaiting_rider}</Badge>}
-                  {a.scheduled > 0 && <Badge variant="secondary">{a.scheduled}</Badge>}
+                <span className="ml-2 flex shrink-0 items-center gap-1.5">
+                  {a.awaiting_rider > 0 && <Badge variant="default" className="text-xs">{a.awaiting_rider}</Badge>}
+                  {a.scheduled > 0 && <Badge variant="secondary" className="text-xs">{a.scheduled}</Badge>}
                 </span>
               </button>
             ))}
           </CardContent>
         </Card>
 
-        <div className="space-y-4">
-          <Card>
-            <CardContent className="flex flex-col gap-3 pt-6 sm:flex-row sm:flex-wrap sm:items-end">
-              <div className="flex-1 text-sm">
-                {area ? (
-                  <>
-                    <div className="font-medium">{area.name}</div>
-                    <div className="text-muted-foreground">
-                      {area.awaiting_rider} awaiting a rider · {area.scheduled} scheduled
-                    </div>
-                  </>
-                ) : (
-                  <span className="text-muted-foreground">Choose a pickup area.</span>
-                )}
-              </div>
-              <div className="w-full space-y-1 sm:w-44">
-                <label className="text-xs font-medium text-muted-foreground">Show</label>
+        {/* Dispatch Actions & Filters Card */}
+        <Card className="flex flex-col justify-between lg:col-span-7">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base font-semibold">Dispatch Actions</CardTitle>
+              {area && (
+                <Badge variant="outline" className="text-xs font-normal">
+                  {area.name} selected
+                </Badge>
+              )}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {area ? (
+                <span>
+                  <strong className="text-foreground">{area.awaiting_rider}</strong> awaiting rider ·{" "}
+                  <strong className="text-foreground">{area.scheduled}</strong> scheduled
+                </span>
+              ) : (
+                <span>Please choose a pickup area from the list to filter and assign riders.</span>
+              )}
+            </div>
+          </CardHeader>
+
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {/* Row 1: Show Status & Job Type */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">Show Status</label>
                 <Select value={statusKey} onValueChange={(v) => chooseStatus(v as StatusKey)}>
                   <SelectTrigger className="w-full">
                     <SelectValue />
@@ -298,8 +323,9 @@ function PickupDispatchTab() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="w-full space-y-1 sm:w-40">
-                <label className="text-xs font-medium text-muted-foreground">Job type</label>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">Job Type</label>
                 <Select
                   value={kind === "" ? "all" : kind}
                   onValueChange={(v) => chooseKind(v === "all" ? "" : (v as "forward" | "return"))}
@@ -314,8 +340,10 @@ function PickupDispatchTab() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="w-full space-y-1 sm:w-56">
-                <label className="text-xs font-medium text-muted-foreground">Rider</label>
+
+              {/* Row 2: Assign Rider & Assign Button */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">Assign Rider</label>
                 <Select value={riderId} onValueChange={setRiderId}>
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder={ridersLoading ? "Loading…" : "Select a rider"} />
@@ -331,42 +359,62 @@ function PickupDispatchTab() {
                   </SelectContent>
                 </Select>
               </div>
-              <Button
-                onClick={submit}
-                disabled={!riderId || selected.size === 0 || assign.isPending}
-              >
-                {assign.isPending ? "Assigning…" : `Assign ${selected.size || ""} pickup(s)`}
-              </Button>
+
+              <div className="flex items-end">
+                <Button
+                  onClick={submit}
+                  disabled={!riderId || selected.size === 0 || assign.isPending}
+                  className="w-full"
+                >
+                  {assign.isPending ? "Assigning…" : `Assign ${selected.size || ""} Pickup(s)`}
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Row 2: Select All & DataTable */}
+      <div className="space-y-3">
+        {areaId !== null && assignable.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-4 py-2.5 text-sm shadow-sm">
+            <label className="flex cursor-pointer items-center gap-2 font-medium">
+              <input
+                type="checkbox"
+                checked={allSelected}
+                onChange={toggleAll}
+                className="rounded border-gray-300 text-primary focus:ring-primary"
+              />
+              <span>Select all awaiting a rider</span>
+              <span className="text-xs font-normal text-muted-foreground">
+                ({selected.size} selected)
+              </span>
+            </label>
+            {assignable.length > MAX_DISPATCH_BATCH && (
+              <span className="text-xs text-muted-foreground">
+                Batch limit: Max {MAX_DISPATCH_BATCH} pickups per assignment
+              </span>
+            )}
+          </div>
+        )}
+
+        {pickups.isError ? (
+          <Card>
+            <CardContent className="py-10 text-center text-sm text-muted-foreground">
+              Couldn&apos;t load pickups for this area.
             </CardContent>
           </Card>
-
-          {areaId !== null && assignable.length > 0 && (
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={allSelected} onChange={toggleAll} />
-              Select all awaiting a rider
-              {assignable.length > MAX_DISPATCH_BATCH &&
-                ` (first ${MAX_DISPATCH_BATCH} — the server takes at most ${MAX_DISPATCH_BATCH} per batch)`}
-            </label>
-          )}
-
-          {pickups.isError ? (
-            <Card>
-              <CardContent className="py-10 text-center text-sm text-muted-foreground">
-                Couldn&apos;t load pickups for this area.
-              </CardContent>
-            </Card>
-          ) : (
-            <DataTable
-              columns={columns}
-              rows={areaId === null ? [] : rows}
-              isLoading={areaId !== null && pickups.isFetching && !rows}
-              rowKey={(r) => r.order_id}
-              emptyMessage={
-                areaId === null ? "Choose a pickup area on the left." : "No pickups in this area."
-              }
-            />
-          )}
-        </div>
+        ) : (
+          <DataTable
+            columns={columns}
+            rows={areaId === null ? [] : rows}
+            isLoading={areaId !== null && pickups.isFetching && !rows}
+            rowKey={(r) => r.order_id}
+            emptyMessage={
+              areaId === null ? "Choose a pickup area above." : "No pickups in this area."
+            }
+          />
+        )}
       </div>
     </>
   );
@@ -452,7 +500,7 @@ function BranchHandoffTab() {
   return (
     <>
       <Card className="mb-4">
-        <CardContent className="flex flex-col gap-3 pt-6 sm:flex-row sm:items-end">
+        <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-end">
           <div className="w-full space-y-1 sm:w-64">
             <label className="text-xs font-medium text-muted-foreground">Branch</label>
             <Select value={branchId} onValueChange={setBranchId}>

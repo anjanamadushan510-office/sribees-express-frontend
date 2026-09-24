@@ -72,7 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // logout, it is just hiding the session from this browser.
     await apiLogout(guard);
     setSession(null);
-    router.push(guard === "staff" ? "/admin/login" : "/login");
+    router.push("/admin/login");
   }, [router, session?.guard, setSession]);
 
   const hasRole = useCallback(

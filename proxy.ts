@@ -26,6 +26,30 @@ export function proxy(request: NextRequest) {
   const token = request.cookies.get("sx_token")?.value;
   const guard = request.cookies.get("sx_guard")?.value;
 
+  const isStaffLoggedIn = Boolean(token && guard === "staff");
+
+  // Root URL
+  if (pathname === "/") {
+    if (isStaffLoggedIn) {
+      return NextResponse.redirect(new URL("/admin/dashboard", request.url));
+    }
+    return NextResponse.next();
+  }
+
+  // Customer auth & public tracking redirects
+  if (pathname === "/login" || pathname === "/track" || pathname.startsWith("/track/")) {
+    return NextResponse.redirect(
+      new URL(isStaffLoggedIn ? "/admin/dashboard" : "/admin/login", request.url)
+    );
+  }
+
+  // Bare /admin path redirect
+  if (pathname === "/admin") {
+    return NextResponse.redirect(
+      new URL(isStaffLoggedIn ? "/admin/dashboard" : "/admin/login", request.url)
+    );
+  }
+
   const isAdminArea = pathname.startsWith("/admin") && pathname !== "/admin/login";
   const isCustomerArea = CUSTOMER_PREFIXES.some(
     (p) => pathname === p || pathname.startsWith(`${p}/`)
@@ -41,7 +65,7 @@ export function proxy(request: NextRequest) {
   // Customer area
   if (isCustomerArea) {
     if (!token || guard !== "client") {
-      return redirectTo(request, "/login", pathname);
+      return redirectTo(request, "/admin/login", pathname);
     }
   }
 
@@ -57,6 +81,9 @@ function redirectTo(request: NextRequest, path: string, from: string) {
 
 export const config = {
   matcher: [
+    "/",
+    "/login",
+    "/track/:path*",
     "/dashboard/:path*",
     "/shipments/:path*",
     "/pricing/:path*",
@@ -65,6 +92,7 @@ export const config = {
     "/finances/:path*",
     "/print/:path*",
     "/waybill-requests/:path*",
+    "/admin",
     "/admin/:path*",
   ],
 };

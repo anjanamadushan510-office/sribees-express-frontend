@@ -117,7 +117,7 @@ export default function ShipmentsPage() {
         search needs a backend change — see docs/API-GAPS.md.
       */}
       <Card className="mb-4">
-        <CardContent className="flex flex-col gap-3 pt-6 sm:flex-row sm:flex-wrap sm:items-end">
+        <CardContent className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
           <div className="w-full space-y-1 sm:w-64">
             <label className="text-xs font-medium text-muted-foreground">Status</label>
             <Select value={status} onValueChange={changeStatus}>

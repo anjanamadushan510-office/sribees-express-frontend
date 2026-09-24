@@ -79,7 +79,7 @@ export default function AdminMileOperationsPage() {
       />
 
       <Card className="mb-4">
-        <CardContent className="flex flex-col gap-3 pt-6 sm:flex-row sm:items-end">
+        <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-end">
           <div className="w-full space-y-1 sm:w-72">
             <label className="text-xs font-medium text-muted-foreground">Status queue</label>
             <Select
