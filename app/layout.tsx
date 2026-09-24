@@ -21,6 +21,14 @@ export const metadata: Metadata = {
   title: "SRIBEES Express — Courier & Delivery",
   description:
     "SRIBEES Express courier management — track packages, manage shipments, and run branch operations.",
+  icons: {
+    icon: [
+      { url: "/logo.png?v=2" },
+      { url: "/favicon.ico?v=2" },
+    ],
+    shortcut: "/logo.png?v=2",
+    apple: "/logo.png?v=2",
+  },
 };
 
 export default function RootLayout({
