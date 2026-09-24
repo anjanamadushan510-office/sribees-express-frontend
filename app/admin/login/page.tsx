@@ -18,10 +18,10 @@ export const metadata: Metadata = {
 export default function StaffLoginPage() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-muted/30 px-4 py-12">
-      <Link href="/" className="mb-8 flex items-center gap-2 text-lg font-semibold">
-        <ShieldCheck className="size-7 text-primary" />
-        SRIBEES Express — Staff
-      </Link>
+      <div className="mb-8 flex items-center gap-2 text-xl font-bold tracking-tight text-foreground">
+        <ShieldCheck className="size-8 text-primary" />
+        <span>SRIBEES Express — Staff Portal</span>
+      </div>
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle className="text-xl">Staff &amp; Branch Login</CardTitle>
@@ -32,11 +32,6 @@ export default function StaffLoginPage() {
         <CardContent>
           <LoginForm guard="staff" redirectTo="/admin/dashboard" />
         </CardContent>
-        <CardFooter className="text-sm text-muted-foreground">
-          <Link href="/login" className="hover:text-foreground">
-            Are you a customer? Sign in here →
-          </Link>
-        </CardFooter>
       </Card>
     </div>
   );
